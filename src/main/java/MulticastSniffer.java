@@ -9,9 +9,12 @@ public class MulticastSniffer {
     final static Logger logger = LoggerFactory.getLogger(MulticastSniffer.class);
 
     public static void main(String[] args) {
+        InetAddress ia = null;
+        String serviceName = null;
         try {
             try {
-                InetAddress ia = InetAddress.getByName(args[0]);
+                ia = InetAddress.getByName(args[0]);
+                serviceName = args[1];
             }
             catch (UnknownHostException e)  {
                 //
@@ -20,13 +23,14 @@ public class MulticastSniffer {
         }  // end try
         catch (Exception e) {
             System.err.println(e);
-            System.err.println("Usage: java MulticastSniffer MulticastAddress port");
+            System.err.println("Usage: java MulticastSniffer [interface name] [service name]");
             // System.exit(1);
         }
 
         // Service type
-        if (args[1] != null) Discovery disc = new Discovery();
-        else Discovery disc = new Discovery(args[1]);
+        Discovery disc;
+        if (serviceName != null) disc = new Discovery(serviceName);
+        else disc = new Discovery();
         
         // Internet Address
         if (ia != null) disc.run(ia);
