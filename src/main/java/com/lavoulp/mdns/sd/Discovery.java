@@ -1,8 +1,6 @@
 package com.lavoulp.mdns.sd;
 
-import com.lavoulp.mdns.dns.Domain;
-import com.lavoulp.mdns.dns.Record;
-import com.lavoulp.mdns.dns.Response;
+import com.lavoulp.mdns.dns.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -85,7 +83,14 @@ public class Discovery {
 
             try {
                 Set<Instance> instances = query.runOnceOn(ia);
-//                instances.stream().forEach(System.out::println);
+                instances.stream().forEach((instance) -> {
+                    System.out.println( instance.toString() );
+                    Device device = new Device();
+                    device.identifier = instance.getName();
+                    device.host = instance.getAddresses().toString();
+                    device.port = instance.getPort();
+                    // cache.put(device.identifier, device);
+                });
             } catch (Exception e) {
                 logger.error(e.getMessage());
             }
@@ -103,11 +108,17 @@ public class Discovery {
                         device.name = record.getName();
                         device.ttl = record.getTTL();
                         device.host = packet.getAddress().getHostAddress();
-                        device.port = packet.getPort();
+//                        if (record instanceof SrvRecord) {
+//                            device.port = ((SrvRecord) record).getPort();
+//                        }
+//                        if (record instanceof PtrRecord) {
+//                            device.identifier = ((PtrRecord) record).getUserVisibleName();
+//                        }
                         device.response = response;
-
-                        if (record.getTTL() == 0) cache.remove(device.name);
-                        else cache.put(device.name, device);
+                        if (device.name != null) {
+                            if (record.getTTL() == 0) cache.remove(device.name);
+                            else cache.put(device.name, device);
+                        }
                         // System.out.println("DEVICE >> " + device.name );
                     }
                 }

@@ -13,8 +13,8 @@ public class MulticastSniffer {
         String serviceName = null;
         try {
             try {
-                ia = InetAddress.getByName(args[0]);
-                serviceName = args[1];
+                serviceName = args[0];
+                ia = InetAddress.getByName(args[1]);
             }
             catch (UnknownHostException e)  {
                 //
@@ -23,7 +23,7 @@ public class MulticastSniffer {
         }  // end try
         catch (Exception e) {
             System.err.println(e);
-            System.err.println("Usage: java MulticastSniffer [interface name] [service name]");
+            System.err.println("Usage: java MulticastSniffer [service name] [interface name/optional]");
             // System.exit(1);
         }
 
