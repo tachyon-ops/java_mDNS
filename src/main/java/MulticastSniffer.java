@@ -1,4 +1,4 @@
-import com.lavoulp.mdns.sd.Discovery;
+import ch.unitelabs.mdns.sd.Discovery;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,20 +11,22 @@ public class MulticastSniffer {
     public static void main(String[] args) {
         InetAddress ia = null;
         String serviceName = null;
+
         try {
-            try {
-                serviceName = args[0];
-                ia = InetAddress.getByName(args[1]);
-            }
-            catch (UnknownHostException e)  {
-                //
-            }
-            // int port = Integer.parseInt(args[1]);
+            serviceName = args[0];
+            logger.debug("Service name: " + serviceName);
+        } catch (Exception e) {
+            logger.error(e.getMessage());
+            logger.error("Usage: java MulticastSniffer [service name] [interface name/optional]");
+        }
+
+        try {
+            ia = Discovery.getInetAddress(args[1]);
+            logger.debug("Network name: " + args[1] + ia );
         }  // end try
         catch (Exception e) {
-            System.err.println(e);
-            System.err.println("Usage: java MulticastSniffer [service name] [interface name/optional]");
-            // System.exit(1);
+            logger.debug(e.getMessage());
+            logger.debug("Usage: java MulticastSniffer [service name] [interface name/optional]");
         }
 
         // Service type

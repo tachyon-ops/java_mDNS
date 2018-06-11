@@ -17,10 +17,10 @@
  * along with Hola.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package com.lavoulp.mdns.sd;
+package ch.unitelabs.mdns.sd;
 
+import ch.unitelabs.mdns.dns.*;
 import com.lavoulp.mdns.dns.*;
-import com.lavoulp.mdns.utils.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

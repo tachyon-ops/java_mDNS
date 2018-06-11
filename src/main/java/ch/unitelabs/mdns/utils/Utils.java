@@ -1,4 +1,4 @@
-package com.lavoulp.mdns.utils;
+package ch.unitelabs.mdns.utils;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

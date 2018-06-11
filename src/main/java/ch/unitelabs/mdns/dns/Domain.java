@@ -17,34 +17,31 @@
  * along with Hola.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package com.lavoulp.mdns.sd;
+package ch.unitelabs.mdns.dns;
 
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class Service {
+public class Domain {
     private final String name;
     private final List<String> labels;
 
-    private static final Pattern SERVICE_PATTERN = Pattern.compile("^((_[a-zA-Z0-9-]+\\.)?_(tcp|udp))\\.?|$");
+    public static final Domain LOCAL = new Domain("local.");
 
-    public static Service fromName(String name) {
-        Matcher matcher = SERVICE_PATTERN.matcher(name);
-        if (matcher.find()) {
-            return new Service(matcher.group(1));
+    private static final Pattern DOMAIN_PATTERN = Pattern.compile("((.*)_(tcp|udp)\\.)?(.*?)\\.?");
+
+    public static Domain fromName(String name) {
+        Matcher matcher = DOMAIN_PATTERN.matcher(name);
+        if (matcher.matches()) {
+            return new Domain(matcher.group(4));
         } else {
-            throw new IllegalArgumentException("Name does not match service syntax");
+            throw new IllegalArgumentException("Name does not match domain syntax");
         }
     }
 
-    private Service(String name) {
-        if (name == null || name.isEmpty()) {
-            throw new IllegalArgumentException("A Service's name can't be null or empty");
-        }
-
+    private Domain(String name) {
         this.name = name;
         labels = Arrays.asList(name.split("\\."));
     }
@@ -54,7 +51,7 @@ public class Service {
     }
 
     public List<String> getLabels() {
-        return Collections.unmodifiableList(labels);
+        return labels;
     }
 
     @Override
@@ -66,9 +63,9 @@ public class Service {
             return false;
         }
 
-        Service service = (Service) o;
+        Domain domain = (Domain) o;
 
-        return name.equals(service.name);
+        return name.equals(domain.name);
 
     }
 
@@ -79,7 +76,7 @@ public class Service {
 
     @Override
     public String toString() {
-        return "Service{" +
+        return "Domain{" +
                 "name='" + name + '\'' +
                 ", labels=" + labels +
                 '}';

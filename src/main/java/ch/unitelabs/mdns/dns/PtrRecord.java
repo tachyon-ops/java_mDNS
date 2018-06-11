@@ -17,50 +17,50 @@
  * along with Hola.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package com.lavoulp.mdns.dns;
+package ch.unitelabs.mdns.dns;
 
 import java.nio.ByteBuffer;
 
-public class SrvRecord extends Record {
-    private final int priority;
-    private final int weight;
-    private final int port;
-    private final String target;
+public class PtrRecord extends Record {
+    private final String userVisibleName;
+    private final String ptrName;
 
-    public SrvRecord(ByteBuffer buffer, String name, Record.Class recordClass, long ttl) {
+    public final static String UNTITLED_NAME = "Untitled";
+
+    public PtrRecord(ByteBuffer buffer, String name, Class recordClass, long ttl, int rdLength) {
         super(name, recordClass, ttl);
-        priority = buffer.getShort() & USHORT_MASK;
-        weight = buffer.getShort() & USHORT_MASK;
-        port = buffer.getShort() & USHORT_MASK;
-        target = readNameFromBuffer(buffer);
+        if (rdLength > 0) {
+            ptrName = readNameFromBuffer(buffer);
+        } else {
+            ptrName = "";
+        }
+        userVisibleName = buildUserVisibleName();
     }
 
-    public int getPriority() {
-        return priority;
+    public String getPtrName() {
+        return ptrName;
     }
 
-    public int getWeight() {
-        return weight;
+    public String getUserVisibleName() {
+        return userVisibleName;
     }
 
-    public int getPort() {
-        return port;
-    }
-
-    public String getTarget() {
-        return target;
+    private String buildUserVisibleName() {
+        String[] parts = ptrName.split("\\.");
+        if (parts[0].length() > 0) {
+            return parts[0];
+        } else {
+            return UNTITLED_NAME;
+        }
     }
 
     @Override
     public String toString() {
-        return "SrvRecord{" +
+        return "PtrRecord{" +
                 "name='" + name + '\'' +
                 ", recordClass=" + recordClass +
                 ", ttl=" + ttl +
-                ", priority=" + priority +
-                ", weight=" + weight +
-                ", port=" + port +
-                ", target='" + target + '\'' +
+                ", ptrName='" + ptrName + '\'' +
                 '}';
     }
 }

@@ -17,7 +17,7 @@
  * along with Hola.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package com.lavoulp.mdns.dns;
+package ch.unitelabs.mdns.dns;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,6 +46,8 @@ public class TxtRecord extends Record {
             String[] parts = s.split("=");
             if (parts.length > 1) {
                 pairs.put(parts[0], parts[1]);
+            } else {
+                pairs.put(parts[0], "");
             }
         });
         return pairs;

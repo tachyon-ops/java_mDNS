@@ -1,11 +1,12 @@
-package com.lavoulp.mdns.sd;
+package ch.unitelabs.mdns.sd;
 
-import com.lavoulp.mdns.dns.*;
+import ch.unitelabs.mdns.dns.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.*;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 
@@ -14,12 +15,24 @@ public class Discovery {
     public static class Device {
         String name;
         long ttl;
+        Map<String, String> attributes;
         String identifier;
         int port;
         String host;
-        String target;
-        String path;
         Response response;
+
+        @Override
+        public String toString() {
+            return "\nDevice{" +
+                    "name='" + name + '\'' +
+                    ", ttl=" + ttl +
+                    ", identifier=" + identifier +
+                    ", host=" + host +
+                    ", port=" + port +
+                    // ", response=" + response +
+                    ", attributes=" + attributes +
+                    '}' + '\n';
+        }
     }
 
     private final static Logger logger = LoggerFactory.getLogger(Discovery.class);
@@ -53,7 +66,8 @@ public class Discovery {
     }
     public void run(InetAddress ia) {
         this.ia = ia;
-        System.out.println("Using 127.0.0.1 5353");
+
+        logger.debug("Using " + ia.getHostAddress() + ":5353 to send mDNS initial query");
 
         try {
             // ia = getInetAddress("local");
@@ -98,31 +112,71 @@ public class Discovery {
             while (true) {
                 // Wait to receive a datagram
                 ms.receive(packet);
-                System.out.println("UDP >> " + packet.getAddress() + ":" + packet.getPort());
+                String str = new String(
+                        packet.getData(),
+                        packet.getOffset(),
+                        packet.getLength(),
+                        StandardCharsets.UTF_8
+                );
+                // logger.info("UDP >> " + packet.getAddress() + ":" + packet.getPort() + " DATA: " + str);
 
                 Response response = Response.createFrom(packet);
 
+                logger.debug(response.toString());
+
+                String deviceName = null;
+                String identifier = null;
+                Map<String, String> attributes = new HashMap<>();
+                int devicePort = 0;
+                long ttl = 0;
+                boolean found = false;
+
                 for (Record record : response.getRecords()) {
-                    if (record.getName().contains(NAME) && !record.getName().equals(NAME + "local.")) {
-                        Discovery.Device device = new Discovery.Device();
-                        device.name = record.getName();
-                        device.ttl = record.getTTL();
-                        device.host = packet.getAddress().getHostAddress();
-//                        if (record instanceof SrvRecord) {
-//                            device.port = ((SrvRecord) record).getPort();
-//                        }
-//                        if (record instanceof PtrRecord) {
-//                            device.identifier = ((PtrRecord) record).getUserVisibleName();
-//                        }
-                        device.response = response;
-                        if (device.name != null) {
-                            if (record.getTTL() == 0) cache.remove(device.name);
-                            else cache.put(device.name, device);
-                        }
-                        // System.out.println("DEVICE >> " + device.name );
+
+
+                    if (record instanceof PtrRecord) {
+                        deviceName = ((PtrRecord) record).getUserVisibleName();
                     }
+
+                    if (record instanceof TxtRecord) {
+                        attributes = ((TxtRecord) record).getAttributes();
+                    }
+
+                    if (record instanceof SrvRecord) {
+                        devicePort = ((SrvRecord) record).getPort();
+                    }
+
+                    if (record.getName().contains(NAME) && !record.getName().equals(NAME + "local.")) {
+                        found = true;
+                    }
+
+                    identifier = record.getName();
+                    ttl = record.getTTL();
                 }
-                System.out.println("CACHE >> " + cache );
+
+                if (found) {
+                    Discovery.Device device;
+                    device = cache.get( deviceName );
+                    if (device == null) {
+                        device = new Discovery.Device();
+                    }
+                    device.name = deviceName;
+                    device.ttl = ttl;
+                    device.host = packet.getAddress().getHostAddress();
+                    device.port = devicePort;
+                    device.identifier = identifier;
+                    device.attributes = attributes;
+                    device.response = response;
+                    if (device.name != null) {
+                        if (ttl == 0) cache.remove(device.name);
+                        else cache.put(device.name, device);
+                    }
+                    // System.out.println("DEVICE >> " + device.name );
+
+                    // logger.info("TYPE >> " + device.attributes );
+                    // logger.info("DEVICE >> " + device );
+                    logger.info("CACHE >> size:" + cache.size() + " \n" + cache );
+                }
 
                 // Reset the length of the packet before reusing it.
                 packet.setLength(buffer.length);
@@ -133,6 +187,36 @@ public class Discovery {
             logger.error("IO Exception " + se.getMessage());
         }
     }
+
+    /*
+
+    How does a whole PC goes out by turning their:
+        1. lid out
+        2. PC shuts down network
+
+    Response{
+        questions=[],
+        records=[
+            PtrRecord{
+                name='1.9.d.4.7.e.d.4.6.b.a.7.1.e.4.d.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.ip6.arpa.',
+                recordClass=IN,
+                ttl=0,
+                ptrName='demo-2.local.'
+            },
+            AaaaRecord{
+                name='demo-2.local.',
+                recordClass=IN,
+                ttl=0,
+                address=/0:0:0:0:d4e1:7ab6:4de7:4d91
+            }
+        ],
+        numQuestions=0,
+        numAnswers=2,
+        numNameServers=0,
+        numAdditionalRecords=0
+    }
+
+     */
 
     /**
      * Gets IP Address that is assigned on a given network interface (currently

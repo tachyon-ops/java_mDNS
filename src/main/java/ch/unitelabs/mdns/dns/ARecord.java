@@ -17,17 +17,33 @@
  * along with Hola.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package com.lavoulp.mdns.dns;
+package ch.unitelabs.mdns.dns;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 
-/**
- * Handle records that we don't care about for mDNS-SD.
- */
-public class UnknownRecord extends Record {
-    public UnknownRecord(ByteBuffer buffer, String name, Record.Class recordClass, long ttl, int length) {
+public class ARecord extends Record {
+    private InetAddress address;
+
+    public ARecord(ByteBuffer buffer, String name, Class recordClass, long ttl) throws UnknownHostException {
         super(name, recordClass, ttl);
-        byte[] toSkip = new byte[length];
-        buffer.get(toSkip);
+        byte[] addressBytes = new byte[4];
+        buffer.get(addressBytes);
+        address = InetAddress.getByAddress(addressBytes);
+    }
+
+    public InetAddress getAddress() {
+        return address;
+    }
+
+    @Override
+    public String toString() {
+        return "ARecord{" +
+                "name='" + name + '\'' +
+                ", recordClass=" + recordClass +
+                ", ttl=" + ttl +
+                ", address=" + address +
+                '}';
     }
 }
