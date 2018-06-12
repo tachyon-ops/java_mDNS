@@ -10,30 +10,6 @@ import java.util.*;
 
 
 public class Discovery {
-//
-//    public static class Device {
-//        String name;
-//        long ttl;
-//        Map<String, String> attributes;
-//        int port;
-//        String host;
-//        Set<InetAddress> addresses;
-//
-//        @Override
-//        public String toString() {
-//            return "\nDevice{" +
-//                    "name='" + name + '\'' +
-//                    ", ttl=" + ttl +
-//                    // ", identifier=" + identifier +
-//                    ", host=" + host +
-//                    ", port=" + port +
-//                    // ", response=" + response +
-//                    ", attributes=" + attributes +
-//                    ", addresses=" + addresses +
-//                    '}' + '\n';
-//        }
-//    }
-
     private final static Logger logger = LoggerFactory.getLogger(Discovery.class);
     public InstancesCache instancesCache = new InstancesCache();
 
@@ -71,10 +47,7 @@ public class Discovery {
                     active = false;
                     return;
                 }
-                logger.debug("heartBeat: {} cache size: {}",
-                        heartBeat,
-                        instancesCache.getCache().size()
-                );
+                // logger.debug("heartBeat: {} cache size: {}", heartBeat, instancesCache.getCache().size());
 
                 if (heartBeat % RENEW_QUERY_SAMPLING == 0) {
                     logger.debug("Querying on ", heartBeat);
@@ -92,7 +65,7 @@ public class Discovery {
         }
     }
 
-    public Discovery() { }
+    public Discovery() {}
 
     public Discovery(String name) {
         this.NAME = name;
@@ -121,25 +94,6 @@ public class Discovery {
         logger.info("CACHE >> size:" + instancesCache.getCache().size() );
     }
 
-//    public Device getDeviceFromInstance(Instance instance) {
-//        Device device = new Device();
-//        // device.identifier = instance.getName();
-//        device.name = instance.getName();
-//        device.ttl = instance.ttl;
-//        device.addresses = instance.getAddresses();
-//
-//        // get host: important for getting shutdown ttls
-//        String hostName = null;
-//        for(InetAddress address : device.addresses) {
-//            hostName = address.getHostName();
-//        }
-//        if (hostName != null) device.host = hostName;
-//
-//        device.port = instance.getPort();
-//        device.attributes = instance.attributes;
-//        return device;
-//    }
-
     public void run() {
         try {
             ia = getLocalHostLANAddress();
@@ -148,6 +102,7 @@ public class Discovery {
             logger.error("UnknownHostException" + e.getMessage());
         }
     }
+
     public void run(InetAddress ia) {
         this.ia = ia;
 
@@ -183,7 +138,7 @@ public class Discovery {
                 ms.receive(packet);
 
                 Response response = Response.createFrom(packet);
-                logger.debug(response.toString());
+                // logger.debug(response.toString());
 
                 boolean found = false;
                 PtrRecord ptr = null;

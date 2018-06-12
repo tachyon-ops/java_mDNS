@@ -259,16 +259,16 @@ public class Query {
             byte[] responseBuffer = new byte[Message.MAX_LENGTH];
             DatagramPacket responsePacket = new DatagramPacket(responseBuffer, responseBuffer.length);
             try {
-                logger.debug("Listening for responses...");
+                // logger.debug("Listening for responses...");
                 if (socket == null) return null;
                 try {
                     socket.receive(responsePacket);
                 } catch (Exception e) {
-                    logger.debug(e.getMessage());
+                    // logger.debug(e.getMessage());
                 }
                 currentTime = System.currentTimeMillis();
                 //Utils.dumpPacket(responsePacket, "response");
-                logger.debug("Response received!");
+                // logger.debug("Response received!");
 //                logger.debug("Response of length {} at offset {}: {}", responsePacket.getLength(), responsePacket.getOffset(), responsePacket.getData());
                 try {
                     parseResponsePacket(responsePacket);
@@ -298,7 +298,7 @@ public class Query {
             fetchMissingRecords();
         } else {
             // This response isn't related to any of the questions we asked
-            logger.debug("This response doesn't answer any of our questions, ignoring it.");
+            // logger.debug("This response doesn't answer any of our questions, ignoring it.");
         }
     }
 
@@ -307,7 +307,7 @@ public class Query {
      * Request any that are missing.
      */
     private void fetchMissingRecords() throws IOException {
-        logger.debug("Records includes:");
+        // logger.debug("Records includes:");
         // records.forEach(r -> logger.debug("{}", r));
         for (PtrRecord ptr : records.stream().filter(r -> r instanceof PtrRecord).map(r -> (PtrRecord) r).collect(Collectors.toList())) {
             fetchMissingSrvRecordsFor(ptr);

@@ -85,7 +85,7 @@ public class Response extends Message {
         if ((codes & QR_MASK) != QR_MASK) {
             // FIXME create a custom Exception for DNS errors
             // throw new IllegalArgumentException("Packet is not a DNS response");
-            logger.debug("Packet is not a DNS response");
+            // logger.debug("Packet is not a DNS response");
             return;
         }
         if ((codes & OPCODE_MASK) != 0) {
@@ -102,7 +102,7 @@ public class Response extends Message {
         numAnswers = readUnsignedShort();
         numNameServers = readUnsignedShort();
         numAdditionalRecords = readUnsignedShort();
-        logger.debug("Questions={}, Answers={}, NameServers={}, AdditionalRecords={}", numQuestions, numAnswers, numNameServers, numAdditionalRecords);
+        // logger.debug("Questions={}, Answers={}, NameServers={}, AdditionalRecords={}", numQuestions, numAnswers, numNameServers, numAdditionalRecords);
     }
 
     public Set<Record> getRecords() {
