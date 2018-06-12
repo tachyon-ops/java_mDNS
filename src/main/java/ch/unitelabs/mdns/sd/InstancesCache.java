@@ -13,24 +13,24 @@ public class InstancesCache {
     private static Logger log = LoggerFactory.getLogger(InstancesCache.class);
     private static long MAX_SERVICE_TIMEOUT = 10; // [s]
     private final Map<String, Instance> instances = new HashMap<>();
-    private final Set<CacheListner> listners = new HashSet<>();
+    private final Set<CacheListenerI> listners = new HashSet<>();
 
     public Map<String, Instance> getCache() {
         return instances;
     }
 
-    interface CacheListner {
+    public static interface CacheListenerI {
         void deviceAdded(String deviceName, String host, int port);
         void deviceRemoved(String deviceName);
     }
 
     public void InstancesCache(){ }
 
-    public void addListener(CacheListner listner) {
+    public void addListener(CacheListenerI listner) {
         this.listners.add(listner);
     }
 
-    public void removeListener(CacheListner listner) {
+    public void removeListener(CacheListenerI listner) {
         this.listners.remove(listner);
     }
 
@@ -51,14 +51,14 @@ public class InstancesCache {
         // in case we don't get a proper hostname... there must be an address
         if (hostName == null) hostName = instance.getAddresses().toString();
 
-        for (CacheListner listener : listners) {
+        for (CacheListenerI listener : listners) {
             listener.deviceAdded(instance.getName(), hostName, instance.getPort());
         }
     }
 
     public void removeInstance(String instanceName){
         instances.remove(instanceName);
-        for (CacheListner listener : listners) {
+        for (CacheListenerI listener : listners) {
             listener.deviceRemoved(instanceName);
         }
     }
