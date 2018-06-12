@@ -6,55 +6,139 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.*;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 
 public class Discovery {
-
-    public static class Device {
-        String name;
-        long ttl;
-        Map<String, String> attributes;
-        String identifier;
-        int port;
-        String host;
-        Response response;
-
-        @Override
-        public String toString() {
-            return "\nDevice{" +
-                    "name='" + name + '\'' +
-                    ", ttl=" + ttl +
-                    ", identifier=" + identifier +
-                    ", host=" + host +
-                    ", port=" + port +
-                    // ", response=" + response +
-                    ", attributes=" + attributes +
-                    '}' + '\n';
-        }
-    }
+//
+//    public static class Device {
+//        String name;
+//        long ttl;
+//        Map<String, String> attributes;
+//        int port;
+//        String host;
+//        Set<InetAddress> addresses;
+//
+//        @Override
+//        public String toString() {
+//            return "\nDevice{" +
+//                    "name='" + name + '\'' +
+//                    ", ttl=" + ttl +
+//                    // ", identifier=" + identifier +
+//                    ", host=" + host +
+//                    ", port=" + port +
+//                    // ", response=" + response +
+//                    ", attributes=" + attributes +
+//                    ", addresses=" + addresses +
+//                    '}' + '\n';
+//        }
+//    }
 
     private final static Logger logger = LoggerFactory.getLogger(Discovery.class);
-
-    public HashMap<String, Discovery.Device> cache = new HashMap<>();
+    public InstancesCache instancesCache = new InstancesCache();
 
     private int port = 5353;
     byte[] buffer = new byte[65509];
     private InetAddress ia, ia1, ia2;
-
     private static String NAME = "_tcp.";
-
     private static final String MDNS_IP4_ADDRESS = "224.0.0.251";
     private static final String MDNS_IP6_ADDRESS = "FF02::FB";
 
-    public Discovery() {
-        // nothing
+    private HeartbeatAgent agent;
+
+    public class HeartbeatAgent implements Runnable {
+        private int SAMPLING_PERIOD = 1000;
+        private int RENEW_QUERY_SAMPLING = 30; // every n^th time of sampling period
+        private int heartBeat = 0;
+        private boolean active = true;
+        private Thread heartBeatThread;
+
+        /**
+         * Starts the HeartbeatAgent asynchronously
+         */
+        public void start() {
+            heartBeatThread = new Thread(this, "Discovery_Heartbeat");
+            //terminate the thread with the VM.
+            heartBeatThread.setDaemon(true);
+            heartBeatThread.start();
+        }
+
+        public void run(){
+            while(active) {
+                if(Thread.interrupted()) {
+                    //to quit from the middle of the loop
+                    logger.info("Thread.interrupted()");
+                    active = false;
+                    return;
+                }
+                logger.debug("heartBeat: {} cache size: {}",
+                        heartBeat,
+                        instancesCache.getCache().size()
+                );
+
+                if (heartBeat % RENEW_QUERY_SAMPLING == 0) {
+                    logger.debug("Querying on ", heartBeat);
+                    query();
+                }
+
+                try {
+                    Thread.sleep(SAMPLING_PERIOD);
+                } catch (InterruptedException e) {
+                    logger.info("[HeartbeatAgent#run] was interrupted");
+                    active = false;
+                }
+                heartBeat++;
+            }
+        }
     }
+
+    public Discovery() { }
 
     public Discovery(String name) {
         this.NAME = name;
     }
+
+    private void query() {
+        // Do question on Network!
+        Service service = Service.fromName(NAME);
+        Query query = Query.createFor(service, Domain.LOCAL);
+
+        try {
+            Set<Instance> instances = query.runOnceOn(ia);
+            // we could collect devices and check agains the cache here
+            instances.stream().forEach((instance) -> {
+                instancesCache.addInstance(instance);
+            });
+
+        } catch (Exception e) {
+            logger.error(e.getMessage());
+            try {
+                ia = getLocalHostLANAddress();
+            } catch (UnknownHostException e1) {
+                logger.error(e.getMessage());
+            }
+        }
+        logger.info("CACHE >> size:" + instancesCache.getCache().size() );
+    }
+
+//    public Device getDeviceFromInstance(Instance instance) {
+//        Device device = new Device();
+//        // device.identifier = instance.getName();
+//        device.name = instance.getName();
+//        device.ttl = instance.ttl;
+//        device.addresses = instance.getAddresses();
+//
+//        // get host: important for getting shutdown ttls
+//        String hostName = null;
+//        for(InetAddress address : device.addresses) {
+//            hostName = address.getHostName();
+//        }
+//        if (hostName != null) device.host = hostName;
+//
+//        device.port = instance.getPort();
+//        device.attributes = instance.attributes;
+//        return device;
+//    }
 
     public void run() {
         try {
@@ -91,91 +175,34 @@ public class Discovery {
             // Create a DatagramPacket packet to receive data into the buffer
             DatagramPacket packet = new DatagramPacket(buffer, buffer.length, ia, port);
 
-            // Do question on Network!
-            Service service = Service.fromName(NAME);
-            Query query = Query.createFor(service, Domain.LOCAL);
-
-            try {
-                Set<Instance> instances = query.runOnceOn(ia);
-                instances.stream().forEach((instance) -> {
-                    System.out.println( instance.toString() );
-                    Device device = new Device();
-                    device.identifier = instance.getName();
-                    device.host = instance.getAddresses().toString();
-                    device.port = instance.getPort();
-                    // cache.put(device.identifier, device);
-                });
-            } catch (Exception e) {
-                logger.error(e.getMessage());
-            }
+            agent = new HeartbeatAgent();
+            agent.start();
 
             while (true) {
                 // Wait to receive a datagram
                 ms.receive(packet);
-                String str = new String(
-                        packet.getData(),
-                        packet.getOffset(),
-                        packet.getLength(),
-                        StandardCharsets.UTF_8
-                );
-                // logger.info("UDP >> " + packet.getAddress() + ":" + packet.getPort() + " DATA: " + str);
 
                 Response response = Response.createFrom(packet);
-
                 logger.debug(response.toString());
 
-                String deviceName = null;
-                String identifier = null;
-                Map<String, String> attributes = new HashMap<>();
-                int devicePort = 0;
-                long ttl = 0;
                 boolean found = false;
+                PtrRecord ptr = null;
+                Instance instance;
 
                 for (Record record : response.getRecords()) {
-
-
                     if (record instanceof PtrRecord) {
-                        deviceName = ((PtrRecord) record).getUserVisibleName();
+                        ptr = ((PtrRecord) record);
                     }
-
-                    if (record instanceof TxtRecord) {
-                        attributes = ((TxtRecord) record).getAttributes();
-                    }
-
-                    if (record instanceof SrvRecord) {
-                        devicePort = ((SrvRecord) record).getPort();
-                    }
-
                     if (record.getName().contains(NAME) && !record.getName().equals(NAME + "local.")) {
                         found = true;
                     }
-
-                    identifier = record.getName();
-                    ttl = record.getTTL();
                 }
 
                 if (found) {
-                    Discovery.Device device;
-                    device = cache.get( deviceName );
-                    if (device == null) {
-                        device = new Discovery.Device();
+                    if (ptr != null) {
+                        instance = Instance.createFromRecords(ptr, response.getRecords());
+                        instancesCache.addInstance(instance);
                     }
-                    device.name = deviceName;
-                    device.ttl = ttl;
-                    device.host = packet.getAddress().getHostAddress();
-                    device.port = devicePort;
-                    device.identifier = identifier;
-                    device.attributes = attributes;
-                    device.response = response;
-                    if (device.name != null) {
-                        if (ttl == 0) cache.remove(device.name);
-                        else cache.put(device.name, device);
-                    }
-                    // System.out.println("DEVICE >> " + device.name );
-
-                    // logger.info("TYPE >> " + device.attributes );
-                    // logger.info("DEVICE >> " + device );
-                    logger.info("CACHE >> size:" + cache.size() + " \n" + cache );
                 }
 
                 // Reset the length of the packet before reusing it.
@@ -187,36 +214,6 @@ public class Discovery {
             logger.error("IO Exception " + se.getMessage());
         }
     }
-
-    /*
-
-    How does a whole PC goes out by turning their:
-        1. lid out
-        2. PC shuts down network
-
-    Response{
-        questions=[],
-        records=[
-            PtrRecord{
-                name='1.9.d.4.7.e.d.4.6.b.a.7.1.e.4.d.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.ip6.arpa.',
-                recordClass=IN,
-                ttl=0,
-                ptrName='demo-2.local.'
-            },
-            AaaaRecord{
-                name='demo-2.local.',
-                recordClass=IN,
-                ttl=0,
-                address=/0:0:0:0:d4e1:7ab6:4de7:4d91
-            }
-        ],
-        numQuestions=0,
-        numAnswers=2,
-        numNameServers=0,
-        numAdditionalRecords=0
-    }
-
-     */
 
     /**
      * Gets IP Address that is assigned on a given network interface (currently

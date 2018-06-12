@@ -20,7 +20,6 @@
 package ch.unitelabs.mdns.sd;
 
 import ch.unitelabs.mdns.dns.*;
-import com.lavoulp.mdns.dns.*;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,13 +33,15 @@ public class Instance {
     private final String name;
     private final Set<InetAddress> addresses;
     private final int port;
-    private final Map<String, String> attributes;
+    public final Map<String, String> attributes;
+    public Long ttl;
 
     private final static Logger logger = LoggerFactory.getLogger(Instance.class);
 
     static Instance createFromRecords(PtrRecord ptr, Set<Record> records) {
         String name = ptr.getUserVisibleName();
         int port;
+        long ttl;
         List<InetAddress> addresses = new ArrayList<>();
         Map<String, String> attributes = Collections.emptyMap();
 
@@ -48,7 +49,9 @@ public class Instance {
                 .filter(r -> r instanceof SrvRecord && r.getName().equals(ptr.getPtrName()))
                 .map(r -> (SrvRecord) r).findFirst();
         if (srv.isPresent()) {
-            logger.debug("Using SrvRecord {} to create instance for {}", srv, ptr);
+            // records.f
+            // logger.debug("Using SrvRecord {} to create instance for {}", srv, ptr);
+            ttl = srv.get().getTTL();
             port = srv.get().getPort();
             addresses.addAll(records.stream().filter(r -> r instanceof ARecord)
                     .filter(r -> r.getName().equals(srv.get().getTarget())).map(r -> ((ARecord) r).getAddress())
@@ -63,14 +66,17 @@ public class Instance {
                 .filter(r -> r instanceof TxtRecord && r.getName().equals(ptr.getPtrName()))
                 .map(r -> (TxtRecord) r).findFirst();
         if (txt.isPresent()) {
-            logger.debug("Using TxtRecord {} to create attributes for {}", txt, ptr);
+            // logger.debug("Using TxtRecord {} to create attributes for {}", txt, ptr);
             attributes = txt.get().getAttributes();
+            ttl = srv.get().getTTL();
         }
-        return new Instance(name, addresses, port, attributes);
+
+        return new Instance(name, addresses, port, attributes, ttl);
     }
 
-    Instance(String name, List<InetAddress> addresses, int port, Map<String, String> attributes) {
+    Instance(String name, List<InetAddress> addresses, int port, Map<String, String> attributes, Long ttl) {
         this.name = name;
+        this.ttl = ttl;
         this.addresses = new HashSet<>();
         this.addresses.addAll(addresses);
         this.port = port;

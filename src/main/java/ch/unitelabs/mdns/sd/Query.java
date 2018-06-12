@@ -20,7 +20,7 @@
 package ch.unitelabs.mdns.sd;
 
 import ch.unitelabs.mdns.dns.*;
-import com.lavoulp.mdns.dns.*;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -173,7 +173,9 @@ public class Query {
     private void ask(Question question) throws IOException {
         if (questions.contains(question)) {
             logger.debug("We've already asked {}, we won't ask again", question);
-            return;
+            // @todo: check if we really want to abort.
+            // We might need to ask again once and a while...
+            // return;
         }
 
         questions.add(question);
@@ -246,6 +248,7 @@ public class Query {
     }
 
     private Set<Instance> collectResponses() {
+        String host = "";
         long startTime = System.currentTimeMillis();
         long currentTime = startTime;
         socketLock.lock();
@@ -305,7 +308,7 @@ public class Query {
      */
     private void fetchMissingRecords() throws IOException {
         logger.debug("Records includes:");
-        records.forEach(r -> logger.debug("{}", r));
+        // records.forEach(r -> logger.debug("{}", r));
         for (PtrRecord ptr : records.stream().filter(r -> r instanceof PtrRecord).map(r -> (PtrRecord) r).collect(Collectors.toList())) {
             fetchMissingSrvRecordsFor(ptr);
             fetchMissingTxtRecordsFor(ptr);
