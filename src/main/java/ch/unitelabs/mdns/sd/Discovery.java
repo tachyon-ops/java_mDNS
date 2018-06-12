@@ -6,38 +6,36 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.*;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 
 public class Discovery {
-
-    public static class Device {
-        String name;
-        long ttl;
-        Map<String, String> attributes;
-        int port;
-        String host;
-        Set<InetAddress> addresses;
-
-        @Override
-        public String toString() {
-            return "\nDevice{" +
-                    "name='" + name + '\'' +
-                    ", ttl=" + ttl +
-                    // ", identifier=" + identifier +
-                    ", host=" + host +
-                    ", port=" + port +
-                    // ", response=" + response +
-                    ", attributes=" + attributes +
-                    ", addresses=" + addresses +
-                    '}' + '\n';
-        }
-    }
+//
+//    public static class Device {
+//        String name;
+//        long ttl;
+//        Map<String, String> attributes;
+//        int port;
+//        String host;
+//        Set<InetAddress> addresses;
+//
+//        @Override
+//        public String toString() {
+//            return "\nDevice{" +
+//                    "name='" + name + '\'' +
+//                    ", ttl=" + ttl +
+//                    // ", identifier=" + identifier +
+//                    ", host=" + host +
+//                    ", port=" + port +
+//                    // ", response=" + response +
+//                    ", attributes=" + attributes +
+//                    ", addresses=" + addresses +
+//                    '}' + '\n';
+//        }
+//    }
 
     private final static Logger logger = LoggerFactory.getLogger(Discovery.class);
-
-    public HashMap<String, Discovery.Device> cache = new HashMap<>();
+    public InstancesCache instancesCache = new InstancesCache();
 
     private int port = 5353;
     byte[] buffer = new byte[65509];
@@ -50,7 +48,7 @@ public class Discovery {
 
     public class HeartbeatAgent implements Runnable {
         private int SAMPLING_PERIOD = 1000;
-        private int RENEW_QUERY_SAMPLING = 1; // every n^th time of sampling period
+        private int RENEW_QUERY_SAMPLING = 30; // every n^th time of sampling period
         private int heartBeat = 0;
         private boolean active = true;
         private Thread heartBeatThread;
@@ -73,7 +71,10 @@ public class Discovery {
                     active = false;
                     return;
                 }
-                logger.debug("heartBeat: {}", heartBeat );
+                logger.debug("heartBeat: {} cache size: {}",
+                        heartBeat,
+                        instancesCache.getCache().size()
+                );
 
                 if (heartBeat % RENEW_QUERY_SAMPLING == 0) {
                     logger.debug("Querying on ", heartBeat);
@@ -81,7 +82,7 @@ public class Discovery {
                 }
 
                 try {
-                    synchronized (heartBeatThread) { heartBeatThread.sleep(SAMPLING_PERIOD); }
+                    Thread.sleep(SAMPLING_PERIOD);
                 } catch (InterruptedException e) {
                     logger.info("[HeartbeatAgent#run] was interrupted");
                     active = false;
@@ -91,9 +92,7 @@ public class Discovery {
         }
     }
 
-    public Discovery() {
-        // nothing
-    }
+    public Discovery() { }
 
     public Discovery(String name) {
         this.NAME = name;
@@ -106,11 +105,9 @@ public class Discovery {
 
         try {
             Set<Instance> instances = query.runOnceOn(ia);
-            // cache.clear();
             // we could collect devices and check agains the cache here
             instances.stream().forEach((instance) -> {
-                Device device = getDeviceFromInstance(instance);
-                updateCachedDevice(device);
+                instancesCache.addInstance(instance);
             });
 
         } catch (Exception e) {
@@ -121,35 +118,27 @@ public class Discovery {
                 logger.error(e.getMessage());
             }
         }
-
-        logger.info("CACHE >> size:" + cache.size() + " \n" + cache );
+        logger.info("CACHE >> size:" + instancesCache.getCache().size() );
     }
 
-    private void updateCachedDevice(Device device) {
-        if (device != null) {
-            if (device.ttl > 0) cache.put(device.name, device);
-            else cache.remove(device.name);
-        }
-    }
-
-    public Device getDeviceFromInstance(Instance instance) {
-        Device device = new Device();
-        // device.identifier = instance.getName();
-        device.name = instance.getName();
-        device.ttl = instance.ttl;
-        device.addresses = instance.getAddresses();
-
-        // get host: important for getting shutdown ttls
-        String hostName = null;
-        for(InetAddress address : device.addresses) {
-            hostName = address.getHostName();
-        }
-        if (hostName != null) device.host = hostName;
-
-        device.port = instance.getPort();
-        device.attributes = instance.attributes;
-        return device;
-    }
+//    public Device getDeviceFromInstance(Instance instance) {
+//        Device device = new Device();
+//        // device.identifier = instance.getName();
+//        device.name = instance.getName();
+//        device.ttl = instance.ttl;
+//        device.addresses = instance.getAddresses();
+//
+//        // get host: important for getting shutdown ttls
+//        String hostName = null;
+//        for(InetAddress address : device.addresses) {
+//            hostName = address.getHostName();
+//        }
+//        if (hostName != null) device.host = hostName;
+//
+//        device.port = instance.getPort();
+//        device.attributes = instance.attributes;
+//        return device;
+//    }
 
     public void run() {
         try {
@@ -192,26 +181,13 @@ public class Discovery {
             while (true) {
                 // Wait to receive a datagram
                 ms.receive(packet);
-                String str = new String(
-                        packet.getData(),
-                        packet.getOffset(),
-                        packet.getLength(),
-                        StandardCharsets.UTF_8
-                );
-                // logger.info("UDP >> " + packet.getAddress() + ":" + packet.getPort() + " DATA: " + str);
 
                 Response response = Response.createFrom(packet);
-
                 logger.debug(response.toString());
 
-                String deviceName = null;
-                Map<String, String> attributes = new HashMap<>();
-                int devicePort = 0;
-                long ttl = 0;
                 boolean found = false;
-
                 PtrRecord ptr = null;
-                Instance instance = null;
+                Instance instance;
 
                 for (Record record : response.getRecords()) {
                     if (record instanceof PtrRecord) {
@@ -225,10 +201,8 @@ public class Discovery {
                 if (found) {
                     if (ptr != null) {
                         instance = Instance.createFromRecords(ptr, response.getRecords());
-                        Device device = getDeviceFromInstance(instance);
-                        updateCachedDevice(device);
+                        instancesCache.addInstance(instance);
                     }
-                    logger.info("CACHE >> size:" + cache.size() + " \n" + cache );
                 }
 
                 // Reset the length of the packet before reusing it.
