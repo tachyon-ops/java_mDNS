@@ -16,9 +16,10 @@ public class Discovery {
         String name;
         long ttl;
         Map<String, String> attributes;
-        String identifier;
+        // String identifier;
         int port;
         String host;
+        Set<InetAddress> addresses;
         Response response;
 
         @Override
@@ -26,11 +27,12 @@ public class Discovery {
             return "\nDevice{" +
                     "name='" + name + '\'' +
                     ", ttl=" + ttl +
-                    ", identifier=" + identifier +
+                    // ", identifier=" + identifier +
                     ", host=" + host +
                     ", port=" + port +
                     // ", response=" + response +
                     ", attributes=" + attributes +
+                    ", addresses=" + addresses +
                     '}' + '\n';
         }
     }
@@ -48,12 +50,106 @@ public class Discovery {
     private static final String MDNS_IP4_ADDRESS = "224.0.0.251";
     private static final String MDNS_IP6_ADDRESS = "FF02::FB";
 
+    private HeartbeatAgent agent;
+
+    public class HeartbeatAgent implements Runnable {
+        private int SAMPLING_PERIOD = 1000;
+        private int RENEW_QUERY_SAMPLING = 5; // every n^th time of sampling period
+        private int heartBeat = 0;
+        private boolean active = true;
+        private Thread heartBeatThread;
+
+        /**
+         * Starts the HeartbeatAgent asynchronously
+         */
+        public void start() {
+            heartBeatThread = new Thread(this, "Discovery_Heartbeat");
+            //terminate the thread with the VM.
+            heartBeatThread.setDaemon(true);
+            heartBeatThread.start();
+        }
+
+        public void run(){
+            while(active) {
+                if(Thread.interrupted()) {
+                    //to quit from the middle of the loop
+                    logger.info("Thread.interrupted()");
+                    active = false;
+                    return;
+                }
+                logger.debug("heartBeat: {}", heartBeat );
+
+
+                if (heartBeat % RENEW_QUERY_SAMPLING == 0) {
+                    logger.debug("Querying on ", heartBeat);
+                    query();
+                }
+
+                try {
+                    synchronized (heartBeatThread) { heartBeatThread.sleep(SAMPLING_PERIOD); }
+                } catch (InterruptedException e) {
+                    logger.info("[HeartbeatAgent#run] was interrupted");
+                    active = false;
+                }
+
+                heartBeat++;
+            }
+        }
+
+    }
+
     public Discovery() {
         // nothing
     }
 
     public Discovery(String name) {
         this.NAME = name;
+    }
+
+    private void query() {
+        // Do question on Network!
+        Service service = Service.fromName(NAME);
+        Query query = Query.createFor(service, Domain.LOCAL);
+
+        HashMap<String, Discovery.Device> newCache = new HashMap<>();
+
+        try {
+            Set<Instance> instances = query.runOnceOn(ia);
+            instances.stream().forEach((instance) -> {
+                System.out.println( instance.toString() );
+                Device device = new Device();
+                // device.identifier = instance.getName();
+                device.name = instance.getName();
+                device.ttl = instance.ttl;
+                device.addresses = instance.getAddresses();
+
+                // get host: important for getting shutdown ttls
+                String hostName = null;
+                for(InetAddress address : device.addresses) {
+                    hostName = address.getHostName();
+                }
+                if (hostName != null) device.host = hostName;
+
+                device.port = instance.getPort();
+                device.attributes = instance.attributes;
+
+                if (device.ttl > 0) newCache.put(device.name, device);
+                // else newCache.remove(device.name);
+            });
+
+            // renew cache
+            cache = newCache;
+
+        } catch (Exception e) {
+            logger.error(e.getMessage());
+            try {
+                ia = getLocalHostLANAddress();
+            } catch (UnknownHostException e1) {
+                logger.error(e.getMessage());
+            }
+        }
+
+        logger.info("CACHE >> size:" + cache.size() + " \n" + cache );
     }
 
     public void run() {
@@ -91,23 +187,8 @@ public class Discovery {
             // Create a DatagramPacket packet to receive data into the buffer
             DatagramPacket packet = new DatagramPacket(buffer, buffer.length, ia, port);
 
-            // Do question on Network!
-            Service service = Service.fromName(NAME);
-            Query query = Query.createFor(service, Domain.LOCAL);
-
-            try {
-                Set<Instance> instances = query.runOnceOn(ia);
-                instances.stream().forEach((instance) -> {
-                    System.out.println( instance.toString() );
-                    Device device = new Device();
-                    device.identifier = instance.getName();
-                    device.host = instance.getAddresses().toString();
-                    device.port = instance.getPort();
-                    // cache.put(device.identifier, device);
-                });
-            } catch (Exception e) {
-                logger.error(e.getMessage());
-            }
+            agent = new HeartbeatAgent();
+            agent.start();
 
             while (true) {
                 // Wait to receive a datagram
@@ -125,32 +206,24 @@ public class Discovery {
                 logger.debug(response.toString());
 
                 String deviceName = null;
-                String identifier = null;
                 Map<String, String> attributes = new HashMap<>();
                 int devicePort = 0;
                 long ttl = 0;
                 boolean found = false;
 
                 for (Record record : response.getRecords()) {
-
-
                     if (record instanceof PtrRecord) {
                         deviceName = ((PtrRecord) record).getUserVisibleName();
                     }
-
                     if (record instanceof TxtRecord) {
                         attributes = ((TxtRecord) record).getAttributes();
                     }
-
                     if (record instanceof SrvRecord) {
                         devicePort = ((SrvRecord) record).getPort();
                     }
-
                     if (record.getName().contains(NAME) && !record.getName().equals(NAME + "local.")) {
                         found = true;
                     }
-
-                    identifier = record.getName();
                     ttl = record.getTTL();
                 }
 
@@ -164,7 +237,7 @@ public class Discovery {
                     device.ttl = ttl;
                     device.host = packet.getAddress().getHostAddress();
                     device.port = devicePort;
-                    device.identifier = identifier;
+                    // device.identifier = identifier;
                     device.attributes = attributes;
                     device.response = response;
                     if (device.name != null) {
