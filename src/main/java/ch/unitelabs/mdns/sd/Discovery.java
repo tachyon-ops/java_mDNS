@@ -16,11 +16,9 @@ public class Discovery {
         String name;
         long ttl;
         Map<String, String> attributes;
-        // String identifier;
         int port;
         String host;
         Set<InetAddress> addresses;
-        Response response;
 
         @Override
         public String toString() {
@@ -44,9 +42,7 @@ public class Discovery {
     private int port = 5353;
     byte[] buffer = new byte[65509];
     private InetAddress ia, ia1, ia2;
-
     private static String NAME = "_tcp.";
-
     private static final String MDNS_IP4_ADDRESS = "224.0.0.251";
     private static final String MDNS_IP6_ADDRESS = "FF02::FB";
 
@@ -54,7 +50,7 @@ public class Discovery {
 
     public class HeartbeatAgent implements Runnable {
         private int SAMPLING_PERIOD = 1000;
-        private int RENEW_QUERY_SAMPLING = 5; // every n^th time of sampling period
+        private int RENEW_QUERY_SAMPLING = 1; // every n^th time of sampling period
         private int heartBeat = 0;
         private boolean active = true;
         private Thread heartBeatThread;
@@ -79,7 +75,6 @@ public class Discovery {
                 }
                 logger.debug("heartBeat: {}", heartBeat );
 
-
                 if (heartBeat % RENEW_QUERY_SAMPLING == 0) {
                     logger.debug("Querying on ", heartBeat);
                     query();
@@ -91,11 +86,9 @@ public class Discovery {
                     logger.info("[HeartbeatAgent#run] was interrupted");
                     active = false;
                 }
-
                 heartBeat++;
             }
         }
-
     }
 
     public Discovery() {
@@ -111,34 +104,14 @@ public class Discovery {
         Service service = Service.fromName(NAME);
         Query query = Query.createFor(service, Domain.LOCAL);
 
-        HashMap<String, Discovery.Device> newCache = new HashMap<>();
-
         try {
             Set<Instance> instances = query.runOnceOn(ia);
+            // cache.clear();
+            // we could collect devices and check agains the cache here
             instances.stream().forEach((instance) -> {
-                System.out.println( instance.toString() );
-                Device device = new Device();
-                // device.identifier = instance.getName();
-                device.name = instance.getName();
-                device.ttl = instance.ttl;
-                device.addresses = instance.getAddresses();
-
-                // get host: important for getting shutdown ttls
-                String hostName = null;
-                for(InetAddress address : device.addresses) {
-                    hostName = address.getHostName();
-                }
-                if (hostName != null) device.host = hostName;
-
-                device.port = instance.getPort();
-                device.attributes = instance.attributes;
-
-                if (device.ttl > 0) newCache.put(device.name, device);
-                // else newCache.remove(device.name);
+                Device device = getDeviceFromInstance(instance);
+                updateCachedDevice(device);
             });
-
-            // renew cache
-            cache = newCache;
 
         } catch (Exception e) {
             logger.error(e.getMessage());
@@ -150,6 +123,32 @@ public class Discovery {
         }
 
         logger.info("CACHE >> size:" + cache.size() + " \n" + cache );
+    }
+
+    private void updateCachedDevice(Device device) {
+        if (device != null) {
+            if (device.ttl > 0) cache.put(device.name, device);
+            else cache.remove(device.name);
+        }
+    }
+
+    public Device getDeviceFromInstance(Instance instance) {
+        Device device = new Device();
+        // device.identifier = instance.getName();
+        device.name = instance.getName();
+        device.ttl = instance.ttl;
+        device.addresses = instance.getAddresses();
+
+        // get host: important for getting shutdown ttls
+        String hostName = null;
+        for(InetAddress address : device.addresses) {
+            hostName = address.getHostName();
+        }
+        if (hostName != null) device.host = hostName;
+
+        device.port = instance.getPort();
+        device.attributes = instance.attributes;
+        return device;
     }
 
     public void run() {
@@ -211,43 +210,24 @@ public class Discovery {
                 long ttl = 0;
                 boolean found = false;
 
+                PtrRecord ptr = null;
+                Instance instance = null;
+
                 for (Record record : response.getRecords()) {
                     if (record instanceof PtrRecord) {
-                        deviceName = ((PtrRecord) record).getUserVisibleName();
-                    }
-                    if (record instanceof TxtRecord) {
-                        attributes = ((TxtRecord) record).getAttributes();
-                    }
-                    if (record instanceof SrvRecord) {
-                        devicePort = ((SrvRecord) record).getPort();
+                        ptr = ((PtrRecord) record);
                     }
                     if (record.getName().contains(NAME) && !record.getName().equals(NAME + "local.")) {
                         found = true;
                     }
-                    ttl = record.getTTL();
                 }
 
                 if (found) {
-                    Discovery.Device device;
-                    device = cache.get( deviceName );
-                    if (device == null) {
-                        device = new Discovery.Device();
+                    if (ptr != null) {
+                        instance = Instance.createFromRecords(ptr, response.getRecords());
+                        Device device = getDeviceFromInstance(instance);
+                        updateCachedDevice(device);
                     }
-                    device.name = deviceName;
-                    device.ttl = ttl;
-                    device.host = packet.getAddress().getHostAddress();
-                    device.port = devicePort;
-                    // device.identifier = identifier;
-                    device.attributes = attributes;
-                    device.response = response;
-                    if (device.name != null) {
-                        if (ttl == 0) cache.remove(device.name);
-                        else cache.put(device.name, device);
-                    }
-                    // System.out.println("DEVICE >> " + device.name );
-
-                    // logger.info("TYPE >> " + device.attributes );
-                    // logger.info("DEVICE >> " + device );
                     logger.info("CACHE >> size:" + cache.size() + " \n" + cache );
                 }
 
@@ -260,36 +240,6 @@ public class Discovery {
             logger.error("IO Exception " + se.getMessage());
         }
     }
-
-    /*
-
-    How does a whole PC goes out by turning their:
-        1. lid out
-        2. PC shuts down network
-
-    Response{
-        questions=[],
-        records=[
-            PtrRecord{
-                name='1.9.d.4.7.e.d.4.6.b.a.7.1.e.4.d.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.ip6.arpa.',
-                recordClass=IN,
-                ttl=0,
-                ptrName='demo-2.local.'
-            },
-            AaaaRecord{
-                name='demo-2.local.',
-                recordClass=IN,
-                ttl=0,
-                address=/0:0:0:0:d4e1:7ab6:4de7:4d91
-            }
-        ],
-        numQuestions=0,
-        numAnswers=2,
-        numNameServers=0,
-        numAdditionalRecords=0
-    }
-
-     */
 
     /**
      * Gets IP Address that is assigned on a given network interface (currently
