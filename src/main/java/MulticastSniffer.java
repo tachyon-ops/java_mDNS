@@ -9,7 +9,7 @@ public class MulticastSniffer {
     final static Logger logger = LoggerFactory.getLogger(MulticastSniffer.class);
 
     public static void main(String[] args) {
-        InetAddress ia = null;
+        String networkInterfaceName = null;
         String serviceName = null;
 
         try {
@@ -21,8 +21,8 @@ public class MulticastSniffer {
         }
 
         try {
-            ia = Discovery.getInetAddress(args[1]);
-            logger.debug("Network name: " + args[1] + ia );
+            networkInterfaceName = args[1];
+            logger.debug("Network name: " + args[1] + " " + networkInterfaceName );
         }  // end try
         catch (Exception e) {
             logger.debug(e.getMessage());
@@ -35,7 +35,7 @@ public class MulticastSniffer {
         else disc = new Discovery();
         
         // Internet Address
-        if (ia != null) disc.run(ia);
+        if (networkInterfaceName != null) disc.run(networkInterfaceName);
         else disc.run();
     }
 }

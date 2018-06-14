@@ -35,6 +35,7 @@ public class Instance {
     private final int port;
     public final Map<String, String> attributes;
     public Long ttl;
+    public String host;
 
     private final static Logger logger = LoggerFactory.getLogger(Instance.class);
 
@@ -60,7 +61,9 @@ public class Instance {
                     .filter(r -> r.getName().equals(srv.get().getTarget())).map(r -> ((AaaaRecord) r).getAddress())
                     .collect(Collectors.toList()));
         } else {
-            throw new IllegalStateException("Cannot create Instance when no SRV record is available");
+            // throw new IllegalStateException("Cannot create Instance when no SRV record is available");
+            logger.error("Cannot create Instance when no SRV record is available");
+            return null;
         }
         Optional<TxtRecord> txt = records.stream()
                 .filter(r -> r instanceof TxtRecord && r.getName().equals(ptr.getPtrName()))
@@ -147,9 +150,10 @@ public class Instance {
 
     @Override
     public String toString() {
-        return "Instance{" +
+        return "{" +
                 "name='" + name + '\'' +
                 ", addresses=" + addresses +
+                ", host=" + host +
                 ", port=" + port +
                 ", attributes=" + attributes +
                 '}';

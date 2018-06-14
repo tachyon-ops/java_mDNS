@@ -24,6 +24,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.UnsupportedEncodingException;
 import java.net.UnknownHostException;
+import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -73,7 +74,7 @@ public abstract class Record {
             case TXT:
                 return new TxtRecord(buffer, name, recordClass, ttl, rdLength);
             default:
-                logger.debug("Buffer represents an unsupported record type, skipping ahead {} bytes", rdLength);
+                // logger.debug("Buffer represents an unsupported record type, skipping ahead {} bytes", rdLength);
                 return new UnknownRecord(buffer, name, recordClass, ttl, rdLength);
         }
     }
@@ -88,22 +89,27 @@ public abstract class Record {
         List<String> labels = new ArrayList<>();
         int labelLength;
         int continueFrom = -1;
-        do {
-            buffer.mark();
-            labelLength = buffer.get() & 0xFF;
-            if (isPointer(labelLength)) {
-                buffer.reset();
-                int offset = buffer.getShort() & 0x3FFF;
-                if (continueFrom < 0) {
-                    continueFrom = buffer.position();
-                }
-                buffer.position(offset);
-            } else {
-                String label = readLabel(buffer, labelLength);
-                labels.add(label);
-            }
-        } while (labelLength != 0);
 
+        try {
+            do {
+                buffer.mark();
+                labelLength = buffer.get() & 0xFF;
+                if (isPointer(labelLength)) {
+                    buffer.reset();
+                    int offset = buffer.getShort() & 0x3FFF;
+                    if (continueFrom < 0) {
+                        continueFrom = buffer.position();
+                    }
+                    buffer.position(offset);
+                } else {
+                    String label = readLabel(buffer, labelLength);
+                    labels.add(label);
+                }
+            } while (labelLength != 0);
+
+        } catch (BufferUnderflowException e) {
+            logger.error(e.getMessage());
+        }
         if (continueFrom >= 0) {
             buffer.position(continueFrom);
         }

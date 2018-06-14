@@ -170,6 +170,31 @@ public class Query {
         return instances;
     }
 
+    public void runOnceNoInstances(InetAddress localhost) throws IOException {
+        logger.debug("Running query on {}", localhost);
+        initialQuestion = new Question(service, domain);
+        try {
+            Thread listener = null;
+            if (localhost != TEST_SUITE_ADDRESS) {
+                openSocket(localhost);
+                listener = listenForResponses();
+                while (!isServerIsListening()) {
+                    logger.debug("Server is not yet listening");
+                }
+            }
+            ask(initialQuestion);
+            if (listener != null) {
+                try {
+                    listener.join();
+                } catch (InterruptedException e) {
+                    logger.error("InterruptedException while listening for mDNS responses: ", e);
+                }
+            }
+        } finally {
+            closeSocket();
+        }
+    }
+
     private void ask(Question question) throws IOException {
         if (questions.contains(question)) {
             logger.debug("We've already asked {}, we won't ask again", question);
@@ -366,6 +391,7 @@ public class Query {
     }
 
     void buildInstancesFromRecords() {
+        if (instances == null) return;
         records.stream().filter(r -> r instanceof PtrRecord && initialQuestion.answeredBy(r))
                 .map(r -> (PtrRecord) r).forEach(ptr -> instances.add(Instance.createFromRecords(ptr, records)));
     }

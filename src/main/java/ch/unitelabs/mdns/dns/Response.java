@@ -54,7 +54,11 @@ public class Response extends Message {
     private Response(DatagramPacket packet) {
         this();
         byte[] dstBuffer = buffer.array();
-        System.arraycopy(packet.getData(), packet.getOffset(), dstBuffer, 0, packet.getLength());
+        try {
+            System.arraycopy(packet.getData(), packet.getOffset(), dstBuffer, 0, packet.getLength());
+        } catch (Exception e) {
+            logger.error(e.getMessage());
+        }
         buffer.limit(packet.getLength());
         buffer.position(0);
     }
