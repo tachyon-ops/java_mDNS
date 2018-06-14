@@ -1,10 +1,12 @@
-import ch.unitelabs.mdns.sd.Discovery;
+import ch.unitelabs.mdns.sd.MDNSRegistry;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class MulticastSniffer {
-    final static Logger logger = LoggerFactory.getLogger(MulticastSniffer.class);
+public class MulticastAnnouncer {
+    final static Logger logger = LoggerFactory.getLogger(MulticastAnnouncer.class);
+
+    public MulticastAnnouncer() {}
 
     public static void main(String[] args) {
         String networkInterfaceName = null;
@@ -28,12 +30,9 @@ public class MulticastSniffer {
         }
 
         // Service type
-        Discovery disc;
-        if (serviceName != null) disc = new Discovery(serviceName);
-        else disc = new Discovery();
-        
-        // Internet Address
-        if (networkInterfaceName != null) disc.run(networkInterfaceName);
-        else disc.run();
+        MDNSRegistry mdnsRegistry;
+
+        System.out.println("Bye!");
     }
 }
+
