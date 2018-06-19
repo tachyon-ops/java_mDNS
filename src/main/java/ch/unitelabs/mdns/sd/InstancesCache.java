@@ -55,7 +55,7 @@ public class InstancesCache {
 
     public class HeartbeatAgent implements Runnable {
         private int SAMPLING_PERIOD = 1000;
-        private int PING_SAMPLING = 10; // every n^th time of sampling period
+        private int PING_SAMPLING = 1; // every n^th time of sampling period
         private int heartBeat = 0;
         private boolean active = true;
         private Thread heartBeatThread;

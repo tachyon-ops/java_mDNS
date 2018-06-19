@@ -20,16 +20,9 @@ public class Discovery {
     private static final String MDNS_IP4_ADDRESS = "224.0.0.251";
     private static final String MDNS_IP6_ADDRESS = "FF02::FB";
 
-    private static boolean reboot = true;
-    private static boolean packetsListener = true;
-    private static boolean rebootPacketsListener = true;
-
-    private PacketReceiverHeartbeatAgent agent;
-    private String networkInterfaceName;
-
     public class PacketReceiverHeartbeatAgent implements Runnable {
         private int SAMPLING_PERIOD = 1000;
-        private int heartBeat = 0;
+        private int packetsReceiverHeartBeat = 0;
         private boolean active = true;
         private boolean packetReady = true;
         private Thread heartBeatThread;
@@ -57,7 +50,7 @@ public class Discovery {
             if (ia1 != null) ms.joinGroup(ia1);
             if (ia2 != null) ms.joinGroup(ia2);
 
-            if (ia == null) iterateInterfaces();
+            if (ia == null) assignInterfaceFromName();
 
             packetReady = true;
         }
@@ -72,7 +65,7 @@ public class Discovery {
                     return;
                 }
 
-                // logger.info("heartBeat: {} cache size: {} packetReady: " + packetReady, heartBeat, instancesCache.getCache().size());
+                // logger.info("packetsReceiverHeartBeat: {} cache size: {} packetReady: " + packetReady, packetsReceiverHeartBeat, instancesCache.getCache().size());
 
                 if (packetReady && ia != null) {
                     try {
@@ -84,7 +77,7 @@ public class Discovery {
                         if (ms != null) ms.receive(packet);
 
                         Response response = Response.createFrom(packet);
-                        logger.info(response.toString());
+                        // logger.info(response.toString());
 
                         boolean found = false;
                         PtrRecord ptr = null;
@@ -129,12 +122,10 @@ public class Discovery {
                     logger.info("[PacketReceiverHeartbeatAgent#run] was interrupted");
                     active = false;
                 }
-                heartBeat++;
+                packetsReceiverHeartBeat++;
             }
         }
     }
-
-    public Discovery() {}
 
     public Discovery(String name) {
         this.NAME = name;
@@ -146,14 +137,6 @@ public class Discovery {
 
     public void removeListener(InstancesCache.CacheListenerI listener) {
         instancesCache.removeListener(listener);
-    }
-
-    private void query(InetAddress ia) throws IOException {
-        // Do question on Network!
-        Service service = Service.fromName(NAME);
-        Query query = Query.createFor(service, Domain.LOCAL);;
-        query.runOnceNoInstances(ia);
-        logger.debug("CACHE >> size:" + instancesCache.getCache().size() );
     }
 
     class QueryRunner implements Runnable {
@@ -186,7 +169,12 @@ public class Discovery {
                 setupInterfaces();
 
                 if (heartBeat % PING_SAMPLING == 0) {
-                    queryInterfaceIa();
+                    // queryInterfaceIa();
+                    try {
+                        iterateAndQueryAllInterfaces();
+                    } catch (IOException e) {
+                        logger.error("Could not iterateAndQueryAllInterfaces(): " + e.getMessage());
+                    }
                 }
 
                 try {
@@ -216,26 +204,12 @@ public class Discovery {
                 logger.error(e1.getMessage());
                 ia2 = null;
             }
-            iterateInterfaces();
-        }
-
-        void queryInterfaceIa() {
-            if (ia != null) {
-                try {
-                    query(ia);
-                    logger.info(">>> QUERIED! using network address {}", ia.getHostAddress());
-                } catch (IOException e) {
-                    logger.error(e.getMessage());
-                }
-            }
+            assignInterfaceFromName();
         }
     }
 
-    void iterateInterfaces() {
+    void assignInterfaceFromName() {
         String interfaceName = "local";
-        if (networkInterfaceName != null) {
-            interfaceName = networkInterfaceName;
-        }
         try {
             ia = getInetAddress(interfaceName);
         } catch (IOException e) {
@@ -247,15 +221,37 @@ public class Discovery {
         }
     }
 
-    public void run() {
-        run("local");
+    void iterateAndQueryAllInterfaces() throws IOException {
+        Enumeration<NetworkInterface> nets = NetworkInterface.getNetworkInterfaces();
+        for (NetworkInterface networkInterface : Collections.list(nets)) {
+            if (networkInterface.isUp() && !networkInterface.getName().equals("lo")) {
+                try {
+                    query(getInetAddress(networkInterface.getName()));
+                    logger.info("Queried interface {}", networkInterface.getName());
+                } catch (IOException e) {
+                    logger.error("Could not query interface {}: " + e.getMessage(), networkInterface.getName());
+                }
+            }
+
+
+            // if (ia instanceof Inet4Address && !ia.isLoopbackAddress()) {
+
+            // }
+        }
     }
 
-    public void run(String networkInterfaceName) {
-        this.networkInterfaceName = networkInterfaceName;
+    private void query(InetAddress ia) throws IOException {
+        Service service = Service.fromName(NAME);
+        Query query = Query.createFor(service, Domain.LOCAL);;
+        query.runOnceNoInstances(ia);
+    }
+
+    public void run() {
+        // Query runner
         QueryRunner queryAgent = new QueryRunner();
         queryAgent.start();
 
+        // Packet Listener
         PacketReceiverHeartbeatAgent packetAgent = new PacketReceiverHeartbeatAgent();
         packetAgent.start();
 

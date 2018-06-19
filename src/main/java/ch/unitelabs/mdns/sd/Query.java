@@ -170,13 +170,13 @@ public class Query {
         return instances;
     }
 
-    public void runOnceNoInstances(InetAddress localhost) throws IOException {
-        logger.debug("Running query on {}", localhost);
+    public void runOnceNoInstances(InetAddress ia) throws IOException {
+        logger.debug("Running query on {}", ia);
         initialQuestion = new Question(service, domain);
         try {
             Thread listener = null;
-            if (localhost != TEST_SUITE_ADDRESS) {
-                openSocket(localhost);
+            if (ia != TEST_SUITE_ADDRESS) {
+                openSocket(ia);
                 listener = listenForResponses();
                 while (!isServerIsListening()) {
                     logger.debug("Server is not yet listening");
