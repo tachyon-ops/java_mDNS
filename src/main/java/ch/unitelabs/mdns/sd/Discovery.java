@@ -76,8 +76,9 @@ public class Discovery {
                         // Wait to receive a datagram
                         if (ms != null) ms.receive(packet);
 
+
                         Response response = Response.createFrom(packet);
-                        // logger.info(response.toString());
+                        logger.info(response.toString());
 
                         boolean found = false;
                         PtrRecord ptr = null;
