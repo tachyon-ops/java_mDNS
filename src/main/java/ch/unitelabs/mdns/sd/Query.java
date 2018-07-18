@@ -170,6 +170,31 @@ public class Query {
         return instances;
     }
 
+    public void runOnceNoInstances(InetAddress ia) throws IOException {
+        logger.debug("Running query on {}", ia);
+        initialQuestion = new Question(service, domain);
+        try {
+            Thread listener = null;
+            if (ia != TEST_SUITE_ADDRESS) {
+                openSocket(ia);
+                listener = listenForResponses();
+                while (!isServerIsListening()) {
+                    logger.debug("Server is not yet listening");
+                }
+            }
+            ask(initialQuestion);
+            if (listener != null) {
+                try {
+                    listener.join();
+                } catch (InterruptedException e) {
+                    logger.error("InterruptedException while listening for mDNS responses: ", e);
+                }
+            }
+        } finally {
+            closeSocket();
+        }
+    }
+
     private void ask(Question question) throws IOException {
         if (questions.contains(question)) {
             logger.debug("We've already asked {}, we won't ask again", question);
@@ -259,16 +284,16 @@ public class Query {
             byte[] responseBuffer = new byte[Message.MAX_LENGTH];
             DatagramPacket responsePacket = new DatagramPacket(responseBuffer, responseBuffer.length);
             try {
-                logger.debug("Listening for responses...");
+                // logger.debug("Listening for responses...");
                 if (socket == null) return null;
                 try {
                     socket.receive(responsePacket);
                 } catch (Exception e) {
-                    logger.debug(e.getMessage());
+                    // logger.debug(e.getMessage());
                 }
                 currentTime = System.currentTimeMillis();
                 //Utils.dumpPacket(responsePacket, "response");
-                logger.debug("Response received!");
+                // logger.debug("Response received!");
 //                logger.debug("Response of length {} at offset {}: {}", responsePacket.getLength(), responsePacket.getOffset(), responsePacket.getData());
                 try {
                     parseResponsePacket(responsePacket);
@@ -298,7 +323,7 @@ public class Query {
             fetchMissingRecords();
         } else {
             // This response isn't related to any of the questions we asked
-            logger.debug("This response doesn't answer any of our questions, ignoring it.");
+            // logger.debug("This response doesn't answer any of our questions, ignoring it.");
         }
     }
 
@@ -307,7 +332,7 @@ public class Query {
      * Request any that are missing.
      */
     private void fetchMissingRecords() throws IOException {
-        logger.debug("Records includes:");
+        // logger.debug("Records includes:");
         // records.forEach(r -> logger.debug("{}", r));
         for (PtrRecord ptr : records.stream().filter(r -> r instanceof PtrRecord).map(r -> (PtrRecord) r).collect(Collectors.toList())) {
             fetchMissingSrvRecordsFor(ptr);
@@ -366,6 +391,7 @@ public class Query {
     }
 
     void buildInstancesFromRecords() {
+        if (instances == null) return;
         records.stream().filter(r -> r instanceof PtrRecord && initialQuestion.answeredBy(r))
                 .map(r -> (PtrRecord) r).forEach(ptr -> instances.add(Instance.createFromRecords(ptr, records)));
     }

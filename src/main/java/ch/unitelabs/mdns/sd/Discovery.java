@@ -10,30 +10,6 @@ import java.util.*;
 
 
 public class Discovery {
-//
-//    public static class Device {
-//        String name;
-//        long ttl;
-//        Map<String, String> attributes;
-//        int port;
-//        String host;
-//        Set<InetAddress> addresses;
-//
-//        @Override
-//        public String toString() {
-//            return "\nDevice{" +
-//                    "name='" + name + '\'' +
-//                    ", ttl=" + ttl +
-//                    // ", identifier=" + identifier +
-//                    ", host=" + host +
-//                    ", port=" + port +
-//                    // ", response=" + response +
-//                    ", attributes=" + attributes +
-//                    ", addresses=" + addresses +
-//                    '}' + '\n';
-//        }
-//    }
-
     private final static Logger logger = LoggerFactory.getLogger(Discovery.class);
     public InstancesCache instancesCache = new InstancesCache();
 
@@ -44,17 +20,17 @@ public class Discovery {
     private static final String MDNS_IP4_ADDRESS = "224.0.0.251";
     private static final String MDNS_IP6_ADDRESS = "FF02::FB";
 
-    private HeartbeatAgent agent;
-
-    public class HeartbeatAgent implements Runnable {
+    public class PacketReceiverHeartbeatAgent implements Runnable {
         private int SAMPLING_PERIOD = 1000;
-        private int RENEW_QUERY_SAMPLING = 30; // every n^th time of sampling period
-        private int heartBeat = 0;
+        private int packetsReceiverHeartBeat = 0;
         private boolean active = true;
+        private boolean packetReady = true;
         private Thread heartBeatThread;
 
+        MulticastSocket ms;
+
         /**
-         * Starts the HeartbeatAgent asynchronously
+         * Starts the PacketReceiverHeartbeatAgent asynchronously
          */
         public void start() {
             heartBeatThread = new Thread(this, "Discovery_Heartbeat");
@@ -63,7 +39,24 @@ public class Discovery {
             heartBeatThread.start();
         }
 
+        void setupPackageReceiver() throws IOException {
+            logger.info("Packet Receiver setup");
+
+            // Create a socket to listen on the port.
+            ms = new MulticastSocket(port);
+
+
+            // Join Multicast Socket to Multicast Addresses IPv4 and IPv6
+            if (ia1 != null) ms.joinGroup(ia1);
+            if (ia2 != null) ms.joinGroup(ia2);
+
+            if (ia == null) assignInterfaceFromName();
+
+            packetReady = true;
+        }
+
         public void run(){
+
             while(active) {
                 if(Thread.interrupted()) {
                     //to quit from the middle of the loop
@@ -71,147 +64,204 @@ public class Discovery {
                     active = false;
                     return;
                 }
-                logger.debug("heartBeat: {} cache size: {}",
-                        heartBeat,
-                        instancesCache.getCache().size()
-                );
 
-                if (heartBeat % RENEW_QUERY_SAMPLING == 0) {
-                    logger.debug("Querying on ", heartBeat);
-                    query();
+                // logger.info("packetsReceiverHeartBeat: {} cache size: {} packetReady: " + packetReady, packetsReceiverHeartBeat, instancesCache.getCache().size());
+
+                if (packetReady && ia != null) {
+                    try {
+
+                        // Create a DatagramPacket packet to receive data into the buffer
+                        DatagramPacket packet = new DatagramPacket(buffer, buffer.length, ia, port);
+
+                        // Wait to receive a datagram
+                        if (ms != null) ms.receive(packet);
+
+
+                        Response response = Response.createFrom(packet);
+                        logger.info(response.toString());
+
+                        boolean found = false;
+                        PtrRecord ptr = null;
+                        Instance instance;
+
+                        for (Record record : response.getRecords()) {
+                            if (record instanceof PtrRecord) {
+                                ptr = ((PtrRecord) record);
+                            }
+                            if (record.getName().contains(NAME) && !record.getName().equals(NAME + "local.")) {
+                                found = true;
+                            }
+                        }
+
+                        if (found) {
+                            if (ptr != null) {
+                                instance = Instance.createFromRecords(ptr, response.getRecords());
+                                instance.host = packet.getAddress().getHostAddress();
+                                if (instance.ttl > 0) instancesCache.addInstance(instance);
+                                else instancesCache.removeInstance(instance.getName());
+                            }
+                        }
+
+                        // Reset the length of the packet before reusing it.
+                        packet.setLength(buffer.length);
+
+                    } catch (IOException e) {
+                        packetReady = false;
+                    }
+                } else {
+                    try {
+                        setupPackageReceiver();
+                        packetReady = true;
+                    } catch (IOException e) {
+                        packetReady = false;
+                    }
                 }
 
                 try {
                     Thread.sleep(SAMPLING_PERIOD);
                 } catch (InterruptedException e) {
-                    logger.info("[HeartbeatAgent#run] was interrupted");
+                    logger.info("[PacketReceiverHeartbeatAgent#run] was interrupted");
                     active = false;
                 }
-                heartBeat++;
+                packetsReceiverHeartBeat++;
             }
         }
     }
-
-    public Discovery() { }
 
     public Discovery(String name) {
         this.NAME = name;
     }
 
-    private void query() {
-        // Do question on Network!
-        Service service = Service.fromName(NAME);
-        Query query = Query.createFor(service, Domain.LOCAL);
+    public void addListener(InstancesCache.CacheListenerI listener) {
+        instancesCache.addListener(listener);
+    }
 
+    public void removeListener(InstancesCache.CacheListenerI listener) {
+        instancesCache.removeListener(listener);
+    }
+
+    class QueryRunner implements Runnable {
+        private int SAMPLING_PERIOD = 5000;
+        private int PING_SAMPLING = 2;
+        private int heartBeat = 0;
+        private boolean activeQueryRunner = true;
+        private Thread heartBeatQueryThread;
+
+        /**
+         * Starts the PacketReceiverHeartbeatAgent asynchronously
+         */
+        public void start() {
+            heartBeatQueryThread = new Thread(this, "Discovery_QueryRunner");
+            //terminate the thread with the VM.
+            heartBeatQueryThread.setDaemon(true);
+            heartBeatQueryThread.start();
+        }
+        @Override
+        public void run() {
+            while(activeQueryRunner) {
+                if(Thread.interrupted()) {
+                    //to quit from the middle of the loop
+                    logger.info("Thread.interrupted()");
+                    activeQueryRunner = false;
+                    return;
+                }
+
+                // logger.info("QueryRunner: {}", heartBeat);
+                setupInterfaces();
+
+                if (heartBeat % PING_SAMPLING == 0) {
+                    // queryInterfaceIa();
+                    try {
+                        iterateAndQueryAllInterfaces();
+                    } catch (IOException e) {
+                        logger.error("Could not iterateAndQueryAllInterfaces(): " + e.getMessage());
+                    }
+                }
+
+                try {
+                    Thread.sleep(SAMPLING_PERIOD);
+                } catch (InterruptedException e) {
+                    logger.info("[PacketReceiverHeartbeatAgent#run] was interrupted");
+                    activeQueryRunner = false;
+                }
+                heartBeat++;
+            }
+        }
+
+        void setupInterfaces() {
+
+            // Try IPv4
+            try {
+                if (ia1 == null) ia1 = InetAddress.getByName(MDNS_IP4_ADDRESS);
+            } catch (UnknownHostException e1) {
+                logger.error(e1.getMessage());
+                ia1 = null;
+            }
+
+            // Try IPv6
+            try {
+                if (ia2 == null) ia2 = InetAddress.getByName(MDNS_IP6_ADDRESS);
+            } catch (UnknownHostException e1) {
+                logger.error(e1.getMessage());
+                ia2 = null;
+            }
+            assignInterfaceFromName();
+        }
+    }
+
+    void assignInterfaceFromName() {
+        String interfaceName = "local";
         try {
-            Set<Instance> instances = query.runOnceOn(ia);
-            // we could collect devices and check agains the cache here
-            instances.stream().forEach((instance) -> {
-                instancesCache.addInstance(instance);
-            });
-
-        } catch (Exception e) {
-            logger.error(e.getMessage());
+            ia = getInetAddress(interfaceName);
+        } catch (IOException e) {
             try {
                 ia = getLocalHostLANAddress();
             } catch (UnknownHostException e1) {
-                logger.error(e.getMessage());
+                logger.error(e1.getMessage());
             }
         }
-        logger.info("CACHE >> size:" + instancesCache.getCache().size() );
     }
 
-//    public Device getDeviceFromInstance(Instance instance) {
-//        Device device = new Device();
-//        // device.identifier = instance.getName();
-//        device.name = instance.getName();
-//        device.ttl = instance.ttl;
-//        device.addresses = instance.getAddresses();
-//
-//        // get host: important for getting shutdown ttls
-//        String hostName = null;
-//        for(InetAddress address : device.addresses) {
-//            hostName = address.getHostName();
-//        }
-//        if (hostName != null) device.host = hostName;
-//
-//        device.port = instance.getPort();
-//        device.attributes = instance.attributes;
-//        return device;
-//    }
+    void iterateAndQueryAllInterfaces() throws IOException {
+        Enumeration<NetworkInterface> nets = NetworkInterface.getNetworkInterfaces();
+        for (NetworkInterface networkInterface : Collections.list(nets)) {
+            if (networkInterface.isUp() && !networkInterface.getName().equals("lo")) {
+                try {
+                    query(getInetAddress(networkInterface.getName()));
+                    logger.info("Queried interface {}", networkInterface.getName());
+                } catch (IOException e) {
+                    logger.error("Could not query interface {}: " + e.getMessage(), networkInterface.getName());
+                }
+            }
+
+
+            // if (ia instanceof Inet4Address && !ia.isLoopbackAddress()) {
+
+            // }
+        }
+    }
+
+    private void query(InetAddress ia) throws IOException {
+        Service service = Service.fromName(NAME);
+        Query query = Query.createFor(service, Domain.LOCAL);;
+        query.runOnceNoInstances(ia);
+    }
 
     public void run() {
-        try {
-            ia = getLocalHostLANAddress();
-            run(ia);
-        } catch (UnknownHostException e) {
-            logger.error("UnknownHostException" + e.getMessage());
-        }
-    }
-    public void run(InetAddress ia) {
-        this.ia = ia;
+        // Query runner
+        QueryRunner queryAgent = new QueryRunner();
+        queryAgent.start();
 
-        logger.debug("Using " + ia.getHostAddress() + ":5353 to send mDNS initial query");
+        // Packet Listener
+        PacketReceiverHeartbeatAgent packetAgent = new PacketReceiverHeartbeatAgent();
+        packetAgent.start();
 
-        try {
-            // ia = getInetAddress("local");
-            ia1 = InetAddress.getByName(MDNS_IP4_ADDRESS);
-            ia2 = InetAddress.getByName(MDNS_IP6_ADDRESS);
-        } catch (UnknownHostException e1) {
-            e1.printStackTrace();
-        }
-
-        try {
-            // Create a socket to listen on the port.
-            MulticastSocket ms = new MulticastSocket(port);
-            if (ia == null) {
-                ia = getLocalHostLANAddress();
+        while(true) {
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
             }
-
-            // Join Multicast Socket to Multicast Addresses IPv4 and IPv6
-            if (ia1 != null) ms.joinGroup(ia1);
-            if (ia2 != null) ms.joinGroup(ia2);
-
-            // Create a DatagramPacket packet to receive data into the buffer
-            DatagramPacket packet = new DatagramPacket(buffer, buffer.length, ia, port);
-
-            agent = new HeartbeatAgent();
-            agent.start();
-
-            while (true) {
-                // Wait to receive a datagram
-                ms.receive(packet);
-
-                Response response = Response.createFrom(packet);
-                logger.debug(response.toString());
-
-                boolean found = false;
-                PtrRecord ptr = null;
-                Instance instance;
-
-                for (Record record : response.getRecords()) {
-                    if (record instanceof PtrRecord) {
-                        ptr = ((PtrRecord) record);
-                    }
-                    if (record.getName().contains(NAME) && !record.getName().equals(NAME + "local.")) {
-                        found = true;
-                    }
-                }
-
-                if (found) {
-                    if (ptr != null) {
-                        instance = Instance.createFromRecords(ptr, response.getRecords());
-                        instancesCache.addInstance(instance);
-                    }
-                }
-
-                // Reset the length of the packet before reusing it.
-                packet.setLength(buffer.length);
-            }
-        }
-        catch (IOException se) {
-            // System.err.println("IO Exception " +  se);
-            logger.error("IO Exception " + se.getMessage());
         }
     }
 
@@ -221,45 +271,40 @@ public class Discovery {
      *
      * @param interfaceName Name of network interface
      */
-    public static InetAddress getInetAddress(String interfaceName) throws SocketException, UnknownHostException {
-        try {
-            if (interfaceName.matches("local")) {
-                return InetAddress.getLocalHost();
-            }
-            final String interfaceDisplay = "Network interface " + interfaceName;
-            final NetworkInterface networkInterface = NetworkInterface.getByName(interfaceName);
-            if (networkInterface == null) {
-                StringBuffer networkInterfaceNames = new StringBuffer();
-                try {
-                    for (NetworkInterface nInterface : Collections
-                            .list(NetworkInterface.getNetworkInterfaces())) {
-                        networkInterfaceNames.append(nInterface.getName() + ", ");
-                    }
-                } catch (SocketException e) {
-                    throw new RuntimeException(e.getMessage());
-                }
-
-                throw new ConnectException(interfaceDisplay + " doesn't exist on this machine\n"
-                        + "Use one of these instead " + networkInterfaceNames.toString());
-            }
-            if (!networkInterface.isUp())
-                throw new ConnectException(interfaceDisplay + " is not up");
-            if (networkInterface.isPointToPoint())
-                throw new ConnectException(interfaceDisplay + " can not be PtP");
-
-            Enumeration<InetAddress> addresses = networkInterface.getInetAddresses();
-            if (!addresses.hasMoreElements())
-                throw new ConnectException(interfaceDisplay + " doesnt have assigned IPs");
-
-            for (InetAddress address : Collections.list(addresses)) {
-                // @TODO: For now only support IPv4 - check IPv6
-                if (address instanceof Inet4Address)
-                    return address;
-            }
-            throw new ConnectException(interfaceDisplay + " doesn't have an assigned IPv4 address");
-        } catch (SocketException | UnknownHostException e) {
-            throw e;
+    public static InetAddress getInetAddress(String interfaceName) throws IOException, UnknownHostException {
+        if (interfaceName.matches("local")) {
+            return InetAddress.getLocalHost();
         }
+        String interfaceDisplay = "Network interface " + interfaceName;
+        NetworkInterface networkInterface = NetworkInterface.getByName(interfaceName);
+        if (networkInterface == null) {
+            StringBuffer networkInterfaceNames = new StringBuffer();
+            try {
+                for (NetworkInterface nInterface : Collections
+                        .list(NetworkInterface.getNetworkInterfaces())) {
+                    networkInterfaceNames.append(nInterface.getName() + ", ");
+                }
+            } catch (SocketException e) {
+                throw new RuntimeException(e.getMessage());
+            }
+            throw new ConnectException(interfaceDisplay + " doesn't exist on this machine\n"
+                    + "Use one of these instead " + networkInterfaceNames.toString());
+        }
+        if (!networkInterface.isUp())
+            throw new ConnectException(interfaceDisplay + " is not up");
+        if (networkInterface.isPointToPoint())
+            throw new ConnectException(interfaceDisplay + " can not be PtP");
+
+        Enumeration<InetAddress> addresses = networkInterface.getInetAddresses();
+        if (!addresses.hasMoreElements())
+            throw new ConnectException(interfaceDisplay + " doesnt have assigned IPs");
+
+        for (InetAddress address : Collections.list(addresses)) {
+            // @TODO: For now only support IPv4 - check IPv6
+            if (address instanceof Inet4Address)
+                return address;
+        }
+        throw new ConnectException(interfaceDisplay + " doesn't have an assigned IPv4 address");
     }
 
 

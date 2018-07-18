@@ -54,7 +54,11 @@ public class Response extends Message {
     private Response(DatagramPacket packet) {
         this();
         byte[] dstBuffer = buffer.array();
-        System.arraycopy(packet.getData(), packet.getOffset(), dstBuffer, 0, packet.getLength());
+        try {
+            System.arraycopy(packet.getData(), packet.getOffset(), dstBuffer, 0, packet.getLength());
+        } catch (Exception e) {
+            logger.error(e.getMessage());
+        }
         buffer.limit(packet.getLength());
         buffer.position(0);
     }
@@ -85,7 +89,7 @@ public class Response extends Message {
         if ((codes & QR_MASK) != QR_MASK) {
             // FIXME create a custom Exception for DNS errors
             // throw new IllegalArgumentException("Packet is not a DNS response");
-            logger.debug("Packet is not a DNS response");
+            // logger.debug("Packet is not a DNS response");
             return;
         }
         if ((codes & OPCODE_MASK) != 0) {
@@ -102,7 +106,7 @@ public class Response extends Message {
         numAnswers = readUnsignedShort();
         numNameServers = readUnsignedShort();
         numAdditionalRecords = readUnsignedShort();
-        logger.debug("Questions={}, Answers={}, NameServers={}, AdditionalRecords={}", numQuestions, numAnswers, numNameServers, numAdditionalRecords);
+        // logger.debug("Questions={}, Answers={}, NameServers={}, AdditionalRecords={}", numQuestions, numAnswers, numNameServers, numAdditionalRecords);
     }
 
     public Set<Record> getRecords() {
