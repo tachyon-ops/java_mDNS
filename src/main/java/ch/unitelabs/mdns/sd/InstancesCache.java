@@ -167,8 +167,8 @@ public class InstancesCache {
         }
     }
 
-    public boolean checkInstance(String instaneName) {
-        Instance preExistent = instances.get(instaneName);
+    public boolean checkInstance(String instanceName) {
+        Instance preExistent = instances.get(instanceName);
         return preExistent != null;
     }
 }

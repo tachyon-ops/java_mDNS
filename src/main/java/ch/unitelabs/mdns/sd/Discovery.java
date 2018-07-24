@@ -5,8 +5,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.net.*;
-import java.util.*;
+import java.net.DatagramPacket;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.net.MulticastSocket;
+import java.net.NetworkInterface;
+import java.net.SocketException;
+import java.net.ConnectException;
+import java.net.Inet4Address;
+import java.util.Collections;
+import java.util.Enumeration;
 
 
 public class Discovery {
@@ -233,11 +241,6 @@ public class Discovery {
                     logger.error("Could not query interface {}: " + e.getMessage(), networkInterface.getName());
                 }
             }
-
-
-            // if (ia instanceof Inet4Address && !ia.isLoopbackAddress()) {
-
-            // }
         }
     }
 
@@ -271,7 +274,7 @@ public class Discovery {
      *
      * @param interfaceName Name of network interface
      */
-    public static InetAddress getInetAddress(String interfaceName) throws IOException, UnknownHostException {
+    public static InetAddress getInetAddress(String interfaceName) throws IOException {
         if (interfaceName.matches("local")) {
             return InetAddress.getLocalHost();
         }
