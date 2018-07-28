@@ -20,6 +20,7 @@
 package ch.unitelabs.mdns.dns;
 
 
+import ch.unitelabs.mdns.new_dns_impl.DnsQuestion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

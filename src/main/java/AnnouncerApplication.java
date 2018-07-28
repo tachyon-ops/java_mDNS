@@ -1,3 +1,4 @@
+import ch.unitelabs.mdns.sd.Announcer;
 import net.sourceforge.argparse4j.ArgumentParsers;
 import net.sourceforge.argparse4j.inf.ArgumentParser;
 import net.sourceforge.argparse4j.inf.ArgumentParserException;
@@ -6,12 +7,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.net.*;
+import java.net.NetworkInterface;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Enumeration;
 
 public class AnnouncerApplication {
     final static Logger logger = LoggerFactory.getLogger(AnnouncerApplication.class);
 
-    public AnnouncerApplication() {}
+    public AnnouncerApplication() {
+    }
 
     public static void main(String[] args) {
 
@@ -26,7 +31,7 @@ public class AnnouncerApplication {
                 .help("Specify port to use.");
 
         parser.addArgument("-s", "--serviceName")
-                .type(Integer.class)
+                .type(String.class)
                 .required(true)
                 .help("Specify service name to use.");
 
@@ -46,29 +51,35 @@ public class AnnouncerApplication {
 
         final String interfaceName = ns.getString("networkInterface");
         final int port = ns.getInt("port");
-        final String serviceName = ns.getString("serviceName");
+        String serviceName = ns.getString("serviceName");
 
-        // Announce!
-        runClient(interfaceName, serviceName, port);
+        if (!serviceName.isEmpty()) {
+            serviceName = "_" + serviceName + ".";
+        }
+
+        // termination is always added
+        serviceName = serviceName + "_tcp.";
+
+        logger.info("Service name: {}", serviceName);
+
+        // Announce and respond!
+        // runClient(interfaceName, serviceName, port);
+
+        // interfaceName serves to handle nics now
+        try {
+            // If you want to iterate network interfaces
+            final Enumeration<NetworkInterface> nics = NetworkInterface.getNetworkInterfaces();
+            final Collection<NetworkInterface> c = new ArrayList<>();
+            while (nics.hasMoreElements()) {
+                c.add(nics.nextElement());
+            }
+
+            new Announcer(serviceName, 55555, c);
+
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
 
         System.out.println("Bye!");
     }
-
-    public static void runClient(String interfaceName, String serviceName, int port) {
-        try {
-            DatagramSocket socket = new DatagramSocket();
-
-            String msg = "";
-            byte[] msgData = msg.getBytes();
-
-            InetAddress inetAddress = InetAddress.getByName(interfaceName);
-            DatagramPacket datagramPacket = new DatagramPacket(msgData, msgData.length, inetAddress, port);
-
-            socket.send(datagramPacket);
-
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
 }
-

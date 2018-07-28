@@ -7,17 +7,23 @@ import net.sourceforge.argparse4j.inf.Namespace;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.net.NetworkInterface;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Enumeration;
+
 public class DiscoveryApplication {
     private final static Logger logger = LoggerFactory.getLogger(DiscoveryApplication.class);
 
     public static void main(String[] args) {
         // Argument Parser
-        ArgumentParser parser = ArgumentParsers.newFor(MulticastAnnouncer.class.toString()).build()
+        ArgumentParser parser = ArgumentParsers.newFor(DiscoveryApplication.class.toString()).build()
                 .defaultHelp(true)
                 .description("BioShake device has defaults and some options.");
 
         parser.addArgument("-s", "--serviceName")
-                .type(Integer.class)
+                .type(String.class)
                 .setDefault("")
                 .help("Specify service name to use.");
 
@@ -32,7 +38,7 @@ public class DiscoveryApplication {
         String serviceName = ns.getString("serviceName");
 
         if (!serviceName.isEmpty()) {
-            serviceName = "_" + serviceName;
+            serviceName = "_" + serviceName + ".";
         }
 
         // termination is always added
@@ -40,8 +46,21 @@ public class DiscoveryApplication {
 
         logger.info("Service name: {}", serviceName);
 
-        // Service type but no need for interface names ;)
-        Discovery disc = new Discovery(serviceName);
-        disc.run();
+        try {
+            // If you want to iterate network interfaces
+            final Enumeration<NetworkInterface> nics = NetworkInterface.getNetworkInterfaces();
+            final Collection<NetworkInterface> c = new ArrayList<>();
+            while (nics.hasMoreElements()) {
+                c.add(nics.nextElement());
+            }
+
+            // Service type but no need for interface names ;)
+            new Discovery(serviceName, c);
+
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+        System.out.println("Bye!");
     }
 }
