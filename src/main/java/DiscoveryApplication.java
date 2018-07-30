@@ -1,5 +1,4 @@
-import ch.unitelabs.mdns.sd.Discovery;
-
+import multicast.sd.Discovery;
 import net.sourceforge.argparse4j.ArgumentParsers;
 import net.sourceforge.argparse4j.inf.ArgumentParser;
 import net.sourceforge.argparse4j.inf.ArgumentParserException;
@@ -9,6 +8,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.NetworkInterface;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Enumeration;
@@ -27,6 +27,12 @@ public class DiscoveryApplication {
                 .setDefault("")
                 .help("Specify service name to use.");
 
+        parser.addArgument("-i", "--interfaces")
+                .type(String.class)
+                .setDefault("")
+                .help("Specify a list of interfaces to use, with a comma separated value like this:\n" +
+                        "   -i interface1,interface2");
+
         Namespace ns = null;
         try {
             ns = parser.parseArgs(args);
@@ -36,6 +42,7 @@ public class DiscoveryApplication {
         }
 
         String serviceName = ns.getString("serviceName");
+        String interfaceList = ns.getString("interfaces");
 
         if (!serviceName.isEmpty()) {
             serviceName = "_" + serviceName + ".";
@@ -46,21 +53,41 @@ public class DiscoveryApplication {
 
         logger.info("Service name: {}", serviceName);
 
+        ArrayList<String> interfaces = new ArrayList<>();
+        if (!interfaceList.isEmpty()) {
+            String[] list = interfaceList.split(",");
+            for (String interfaceString : list) {
+                interfaces.add(interfaceString);
+            }
+        }
+
         try {
             // If you want to iterate network interfaces
             final Enumeration<NetworkInterface> nics = NetworkInterface.getNetworkInterfaces();
             final Collection<NetworkInterface> c = new ArrayList<>();
-            while (nics.hasMoreElements()) {
-                c.add(nics.nextElement());
+
+
+            if (interfaces.isEmpty()) {
+                while (nics.hasMoreElements()) {
+                    c.add(nics.nextElement());
+                }
+            } else {
+                while (nics.hasMoreElements()) {
+                    NetworkInterface networkInterface = nics.nextElement();
+                    System.out.println(networkInterface.getName());
+                    if (interfaces.contains(networkInterface.getName())) {
+                        c.add(networkInterface);
+                        System.out.println(networkInterface.getName() + " was added to list of network interfaces");
+                    }
+                    c.add(networkInterface);
+                }
             }
 
-            // Service type but no need for interface names ;)
-            new Discovery(serviceName, c);
+            final Discovery discovery = new Discovery(serviceName, Clock.systemDefaultZone(), c);
+            discovery.run();
 
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-
-        System.out.println("Bye!");
     }
 }
