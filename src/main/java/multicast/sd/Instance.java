@@ -24,8 +24,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.stream.Collectors;
 
 public class Instance {
@@ -44,6 +46,7 @@ public class Instance {
         String name = ptr.getUserVisibleName();
         int port;
         long ttl;
+        String host;
         List<InetAddress> addresses = new ArrayList<>();
         Map<String, String> attributes = Collections.emptyMap();
 
@@ -55,12 +58,8 @@ public class Instance {
             // logger.debug("Using SrvRecord {} to create instance for {}", srv, ptr);
             ttl = srv.get().getTTL();
             port = srv.get().getPort();
-            addresses.addAll(records.stream().filter(r -> r instanceof ARecord)
-                    .filter(r -> r.getName().equals(srv.get().getTarget())).map(r -> ((ARecord) r).getAddress())
-                    .collect(Collectors.toList()));
-            addresses.addAll(records.stream().filter(r -> r instanceof AaaaRecord)
-                    .filter(r -> r.getName().equals(srv.get().getTarget())).map(r -> ((AaaaRecord) r).getAddress())
-                    .collect(Collectors.toList()));
+            host = srv.get().getTarget();
+
         } else {
             // throw new IllegalStateException("Cannot create Instance when no SRV record is available");
             logger.error("Cannot create Instance when no SRV record is available");
@@ -75,10 +74,50 @@ public class Instance {
             ttl = srv.get().getTTL();
         }
 
-        return new Instance(name, addresses, port, attributes, ttl);
+        Optional<ARecord> aRecord = records.stream()
+                .filter(r -> r instanceof ARecord && r.getName().equals(srv.get().getTarget()))
+                .map(r -> (ARecord) r).findFirst();
+        Optional<AaaaRecord> aaaRecord = records.stream()
+                .filter(r -> r instanceof AaaaRecord && r.getName().equals(srv.get().getTarget()))
+                .map(r -> (AaaaRecord) r).findFirst();
+
+        if (aRecord.isPresent()) {
+            addresses.addAll(records.stream().filter(r -> r instanceof ARecord)
+                    .filter(r -> r.getName().equals(srv.get().getTarget())).map(r -> ((ARecord) r).getAddress())
+                    .collect(Collectors.toList()));
+        } else if (aaaRecord.isPresent()) {
+            addresses.addAll(records.stream().filter(r -> r instanceof AaaaRecord)
+                    .filter(r -> r.getName().equals(srv.get().getTarget())).map(r -> ((AaaaRecord) r).getAddress())
+                    .collect(Collectors.toList()));
+        } else {
+            // last resort (A and AAAA Records do not appear on the first run)
+            Optional<Collection<InetAddress>> addressCollection = getAddressesFromHost(host);
+            if (addressCollection.isPresent()) {
+                addresses.addAll(addressCollection.get());
+            }
+        }
+
+        return new Instance(name, addresses, port, attributes, ttl, host);
     }
 
-    Instance(String name, List<InetAddress> addresses, int port, Map<String, String> attributes, Long ttl) {
+    private static Optional<Collection<InetAddress>> getAddressesFromHost(String host) {
+        Collection<InetAddress> inetAddresses = new ConcurrentLinkedDeque<>();
+        try {
+            InetAddress[] machines;
+            machines = InetAddress.getAllByName(host);
+
+            for(InetAddress address : machines){
+                inetAddresses.add(address);
+            }
+        } catch (UnknownHostException e) {
+            e.printStackTrace();
+        }
+        return Optional.of(inetAddresses);
+    }
+
+
+    Instance(String name, List<InetAddress> addresses,
+             int port, Map<String, String> attributes, Long ttl, String host) {
         this.name = name;
         this.ttl = ttl;
         this.addresses = new HashSet<>();
@@ -86,6 +125,12 @@ public class Instance {
         this.port = port;
         this.attributes = attributes;
         this.instantStamp = Instant.now();
+        this.host = host;
+    }
+
+    static String getHostFromTarget(String target){
+        logger.info("TARGET: ", target);
+        return target;
     }
 
     /**

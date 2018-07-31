@@ -1,4 +1,5 @@
 import multicast.sd.Discovery;
+import multicast.sd.Service;
 import net.sourceforge.argparse4j.ArgumentParsers;
 import net.sourceforge.argparse4j.inf.ArgumentParser;
 import net.sourceforge.argparse4j.inf.ArgumentParserException;
@@ -26,6 +27,11 @@ public class DiscoveryApplication {
                 .setDefault("")
                 .help("Specify service name to use.");
 
+        parser.addArgument("-st", "--serviceType")
+                .type(String.class)
+                .setDefault("_tcp")
+                .help("Specify service type to use.");
+
         parser.addArgument("-i", "--interfaces")
                 .type(String.class)
                 .setDefault("")
@@ -46,15 +52,19 @@ public class DiscoveryApplication {
         }
 
         String serviceName = ns.getString("serviceName");
-        String interfaceList = ns.getString("interfaces");
+        String serviceType = ns.getString("serviceType");
         String domain = ns.getString("domain");
+        String interfaceList = ns.getString("interfaces");
+        String serviceRegistration = serviceName + "." + serviceType + ".";
 
-        if (!serviceName.isEmpty()) {
-            serviceName = "_" + serviceName + ".";
-        }
+        logger.info("SETTINGS >> Service NAME: {}", serviceName);
+        logger.info("SETTINGS >> Service TYPE: {}", serviceType);
+        logger.info("SETTINGS >> Domain: {}", domain);
+        logger.info("SETTINGS >> Combined: {}", serviceRegistration + domain + ".");
+        logger.info("SETTINGS >> Interface List: {}", interfaceList);
 
         // termination is always added
-        serviceName = serviceName + "_tcp.";
+        // serviceName = serviceName + "_tcp.";
 
         ArrayList<String> interfaces = new ArrayList<>();
         if (!interfaceList.isEmpty()) {
@@ -86,7 +96,10 @@ public class DiscoveryApplication {
                 }
             }
 
-            final Discovery discovery = new Discovery(serviceName, domain, c);
+            final Discovery discovery = new Discovery(
+                    serviceRegistration,
+                    domain, c, 5
+            );
             discovery.run();
 
         } catch (IOException e) {

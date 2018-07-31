@@ -9,10 +9,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.*;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import static multicast.helpers.MulticastDns.*;
 
@@ -50,7 +47,7 @@ public class Discovery {
             ms.joinGroup(IPV4_ADDR);
             ms.joinGroup(IPV6_ADDR);
 
-            assignInterfaceFromName();
+//            assignInterfaceFromName();
 
             packetReady = true;
         }
@@ -70,42 +67,14 @@ public class Discovery {
                 if (packetReady && (ms != null) ) {
                     try {
 
-                        // Create a DatagramPacket packet to receive data into the buffer
-                        DatagramPacket packet = new DatagramPacket(buffer, buffer.length, ia, MDNS_PORT);
-
-                        // Wait to receive a datagram
-                        ms.receive(packet);
-
-
-                        Response response = Response.createFrom(packet);
-                        logger.info(response.toString());
-
-                        boolean found = false;
-                        PtrRecord ptr = null;
-                        Instance instance;
-
-                        for (Record record : response.getRecords()) {
-                            if (record instanceof PtrRecord) {
-                                ptr = ((PtrRecord) record);
-                            }
-                            if (record.getName().contains(SERVICE_REGISTRY)
-                                    // && !record.getName().equals(SERVICE_REGISTRY + "local.")
-                                    ) {
-                                found = true;
+                        for (NetworkInterface networkInterface : nis) {
+                            if (networkInterface.isUp()) {
+                                Enumeration<InetAddress> inetAddresses = networkInterface.getInetAddresses();
+                                while (inetAddresses.hasMoreElements()) {
+                                    receivePackets(inetAddresses.nextElement());
+                                }
                             }
                         }
-
-                        if (found) {
-                            if (ptr != null) {
-                                instance = Instance.createFromRecords(ptr, response.getRecords());
-                                instance.host = packet.getAddress().getHostAddress();
-                                if (instance.ttl > 0) instancesCache.addInstance(instance);
-                                else instancesCache.removeInstance(instance.getName());
-                            }
-                        }
-
-                        // Reset the length of the packet before reusing it.
-                        packet.setLength(buffer.length);
 
                     } catch (IOException e) {
                         packetReady = false;
@@ -128,11 +97,49 @@ public class Discovery {
                 packetsReceiverHeartBeat++;
             }
         }
+
+        void receivePackets(InetAddress inetAddress) throws IOException {
+            // Create a DatagramPacket packet to receive data into the buffer
+            DatagramPacket packet = new DatagramPacket(buffer, buffer.length, inetAddress, MDNS_PORT);
+
+            // Wait to receive a datagram
+            ms.receive(packet);
+
+
+            Response response = Response.createFrom(packet);
+            logger.info(response.toString());
+
+            boolean found = false;
+            PtrRecord ptr = null;
+            Instance instance;
+
+            for (Record record : response.getRecords()) {
+                if (record instanceof PtrRecord) {
+                    ptr = ((PtrRecord) record);
+                }
+                if (record.getName().contains(SERVICE_REGISTRY)
+                    // && !record.getName().equals(SERVICE_REGISTRY + "local.")
+                        ) {
+                    found = true;
+                }
+            }
+
+            if (found) {
+                if (ptr != null) {
+                    instance = Instance.createFromRecords(ptr, response.getRecords());
+                    // instance.host = packet.getAddress().getHostAddress();
+                    if (instance.ttl > 0) instancesCache.addInstance(instance);
+                    else instancesCache.removeInstance(instance.getName());
+                }
+            }
+
+            // Reset the length of the packet before reusing it.
+            packet.setLength(buffer.length);
+        }
     }
 
     class QueryRunner implements Runnable {
-        private int SAMPLING_PERIOD = 5000;
-        private int PING_SAMPLING = 2;
+        private int SAMPLING_PERIOD = 1000;
         private int heartBeat = 0;
         private boolean activeQueryRunner = true;
         private Thread heartBeatQueryThread;
@@ -159,8 +166,7 @@ public class Discovery {
                 // logger.info("QueryRunner: {}", heartBeat);
                 setupInterfaces();
 
-                if (heartBeat % PING_SAMPLING == 0) {
-                    // queryInterfaceIa();
+                if (heartBeat % QUERY_RATE == 0) {
                     try {
                         queryAll();
                     } catch (IOException e) {
@@ -197,32 +203,21 @@ public class Discovery {
     public InstancesCache instancesCache = new InstancesCache();
 
     byte[] buffer = new byte[MAX_DNS_MESSAGE_SIZE];
-    private InetAddress ia;
     private static String SERVICE_REGISTRY;
     private static String DOMAIN_REGISTRY;
+
+    private static int QUERY_RATE; // in [seconds]
 
     private final Collection<NetworkInterface> nis;
 
     private List<NetworkInterface> interfaceList;
 
-    public Discovery(String name, String domain, final Collection<NetworkInterface> nis) {
+    public Discovery(String name, String domain, final Collection<NetworkInterface> nis, int queryRateInSeconds) {
+        QUERY_RATE = queryRateInSeconds;
         SERVICE_REGISTRY = name;
         DOMAIN_REGISTRY = domain;
         this.nis = nis;
         interfaceList = new ArrayList<>();
-    }
-
-    private void assignInterfaceFromName() {
-        String interfaceName = "local";
-        try {
-            ia = getInetAddress(interfaceName);
-        } catch (IOException e) {
-            try {
-                ia = getLocalHostLANAddress();
-            } catch (UnknownHostException e1) {
-                logger.error(e1.getMessage());
-            }
-        }
     }
 
     /**
@@ -264,15 +259,11 @@ public class Discovery {
         }
     }
 
-    public void query(InetAddress ia) throws IOException {
-        Service service = Service.fromName(SERVICE_REGISTRY);
-        Domain domain = Domain.fromName(DOMAIN_REGISTRY);
-
-        Query query = Query.createFor(service, domain);
-
-        // logger.info("Service: {}, Domain: {}", service, domain);
-        // logger.info("Query: {}", query.getQuestions());
-
-        query.runOnceNoInstances(ia);
+    public void query(InetAddress inetAddress) throws IOException {
+        Query query = Query.createFor(
+                Service.fromName(SERVICE_REGISTRY),
+                Domain.fromName(DOMAIN_REGISTRY)
+        );
+        query.runOnceNoInstances(inetAddress);
     }
 }
