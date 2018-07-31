@@ -14,6 +14,10 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
+import static multicast.helpers.MulticastDns.MDNS_IP4_ADDRESS;
+import static multicast.helpers.MulticastDns.MDNS_IP6_ADDRESS;
+import static multicast.helpers.MulticastDns.MDNS_PORT;
+
 public class Query {
     private final Service service;
     private final Domain domain;
@@ -34,9 +38,6 @@ public class Query {
 
     private final static Logger logger = LoggerFactory.getLogger(Query.class);
 
-    public static final String MDNS_IP4_ADDRESS = "224.0.0.251";
-    public static final String MDNS_IP6_ADDRESS = "FF02::FB";
-    public static final int MDNS_PORT = 5353;
     private static final int WAIT_FOR_LISTENER_MS = 10; // Number of milliseconds to wait for the listener to start
     static final InetAddress TEST_SUITE_ADDRESS = null;
 

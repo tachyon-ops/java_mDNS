@@ -8,7 +8,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.NetworkInterface;
-import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Enumeration;
@@ -33,6 +32,11 @@ public class DiscoveryApplication {
                 .help("Specify a list of interfaces to use, with a comma separated value like this:\n" +
                         "   -i interface1,interface2");
 
+        parser.addArgument("-d", "--domain")
+                .type(String.class)
+                .setDefault("local")
+                .help("Let's you use more uncommon domains");
+
         Namespace ns = null;
         try {
             ns = parser.parseArgs(args);
@@ -43,6 +47,7 @@ public class DiscoveryApplication {
 
         String serviceName = ns.getString("serviceName");
         String interfaceList = ns.getString("interfaces");
+        String domain = ns.getString("domain");
 
         if (!serviceName.isEmpty()) {
             serviceName = "_" + serviceName + ".";
@@ -50,8 +55,6 @@ public class DiscoveryApplication {
 
         // termination is always added
         serviceName = serviceName + "_tcp.";
-
-        logger.info("Service name: {}", serviceName);
 
         ArrayList<String> interfaces = new ArrayList<>();
         if (!interfaceList.isEmpty()) {
@@ -83,7 +86,7 @@ public class DiscoveryApplication {
                 }
             }
 
-            final Discovery discovery = new Discovery(serviceName, Clock.systemDefaultZone(), c);
+            final Discovery discovery = new Discovery(serviceName, domain, c);
             discovery.run();
 
         } catch (IOException e) {

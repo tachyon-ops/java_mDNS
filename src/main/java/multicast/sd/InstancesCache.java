@@ -7,11 +7,14 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketAddress;
+import java.time.Instant;
 import java.util.*;
 
 public class InstancesCache {
     private static Logger logger = LoggerFactory.getLogger(InstancesCache.class);
+
     private static long MAX_SERVICE_TIMEOUT = 10; // [s]
+
     private final Map<String, Instance> instances = new HashMap<>();
     private final Set<CacheListenerI> listners = new HashSet<>();
 
@@ -40,6 +43,10 @@ public class InstancesCache {
 //            }
 //        }
 //        objectsToRemove.stream().forEach(o -> );
+    }
+
+    public void cleanCache() {
+        instances.clear();
     }
 
     public static interface CacheListenerI {
@@ -82,6 +89,7 @@ public class InstancesCache {
                 }
                 logger.info("heartBeat: {} cache size: {} " + instances.keySet().toString(), heartBeat, instances.size() );
 
+                checkAllttl();
 
                 if (heartBeat % PING_SAMPLING == 0) {
                     try {
@@ -98,6 +106,15 @@ public class InstancesCache {
                     active = false;
                 }
                 heartBeat++;
+            }
+        }
+
+        void checkAllttl() {
+            for (Instance instance : instances.values()) {
+                if (instance.instantStamp.compareTo( Instant.now() ) > instance.ttl) {
+                    removeInstance(instance.getName());
+                    logger.info("Instance " + instance.getName() + " dropped due to ttl exhaustion.");
+                }
             }
         }
 

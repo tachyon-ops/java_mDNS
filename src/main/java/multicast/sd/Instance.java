@@ -24,6 +24,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.InetAddress;
+import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -34,6 +35,8 @@ public class Instance {
     public final Map<String, String> attributes;
     public Long ttl;
     public String host;
+
+    Instant instantStamp;
 
     private final static Logger logger = LoggerFactory.getLogger(Instance.class);
 
@@ -82,6 +85,7 @@ public class Instance {
         this.addresses.addAll(addresses);
         this.port = port;
         this.attributes = attributes;
+        this.instantStamp = Instant.now();
     }
 
     /**

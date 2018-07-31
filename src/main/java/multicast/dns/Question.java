@@ -1,6 +1,5 @@
 package multicast.dns;
 
-import multicast.sd.Query;
 import multicast.sd.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,6 +9,8 @@ import java.net.DatagramPacket;
 import java.net.InetAddress;
 import java.net.MulticastSocket;
 import java.nio.ByteBuffer;
+
+import static multicast.helpers.MulticastDns.MDNS_PORT;
 
 public class Question extends Message {
     private final String qName;
@@ -87,7 +88,7 @@ public class Question extends Message {
     }
 
     private void askWithGroup(InetAddress group, MulticastSocket socket) throws IOException {
-        DatagramPacket packet = new DatagramPacket(buffer.array(), buffer.position(), group, Query.MDNS_PORT);
+        DatagramPacket packet = new DatagramPacket(buffer.array(), buffer.position(), group, MDNS_PORT);
         packet.setAddress(group);
         socket.send(packet);
     }

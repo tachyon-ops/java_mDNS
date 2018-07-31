@@ -22,7 +22,7 @@ public class Domain {
         }
     }
 
-    private Domain(String name) {
+    public Domain(String name) {
         this.name = name;
         labels = Arrays.asList(name.split("\\."));
     }
